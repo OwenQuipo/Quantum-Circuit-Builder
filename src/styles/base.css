@@ -1,0 +1,162 @@
+/* =========================
+   Color system (modern greyscale)
+   ========================= */
+:root{
+  --bg: #0b0c0e;
+  --surface: rgba(22, 24, 28, 0.78);
+  --surface2: rgba(22, 24, 28, 0.42);
+  --text: rgba(245, 245, 245, 0.92);
+  --muted: rgba(245, 245, 245, 0.58);
+  --line: rgba(245, 245, 245, 0.10);
+
+  --accent: rgba(160, 170, 185, 0.55);
+  --glow: rgba(120, 210, 255, 0.55);
+  --circuit-wire: rgba(245, 245, 245, 0.82);
+  --circuit-wire-faint: rgba(245, 245, 245, 0.32);
+  --circuit-gate-bg: #16181d;
+  --circuit-gate-border: #e5e7eb;
+  --circuit-gate-glow: rgba(120, 210, 255, 0.36);
+
+  --pad: 16px;
+  --gap: 14px;
+
+  --splitLeft: 44%;
+  --splitW: 10px;
+
+  --drawerH: 32vh;
+  --drawerMinH: 180px;
+  --drawerMaxH: 95vh;
+
+  /* gate library fixed width to avoid messing up drag coords */
+  --gateLibW: 360px;
+}
+
+html, body{
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  font-family: "Times New Roman", "CMU Serif", "Latin Modern Roman", Georgia, serif;
+}
+
+#qubit-visualizer{
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 52px 1fr;
+  gap: var(--gap);
+  padding: var(--pad);
+  box-sizing: border-box;
+}
+
+/* =========================
+   Layout
+   ========================= */
+#topbar{
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--surface2);
+  border-radius: 14px;
+  user-select: none;
+}
+
+#title{
+  font-size: 0.85rem;
+  opacity: 0.75;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spacer{ flex: 1; }
+
+#main{
+  display: grid;
+  grid-template-columns: minmax(340px, var(--splitLeft)) var(--splitW) minmax(420px, 1fr);
+  min-height: 0;
+  gap: 0;
+}
+
+.pane{
+  min-height: 0;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.02);
+  position: relative;
+  overflow: hidden;
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+/* =========================
+   Splitter
+   ========================= */
+.splitter{
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  position: relative;
+  background: rgba(255,255,255,0.015);
+}
+.splitter::before{
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 50%;
+  width: 18px;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(circle, rgba(245,245,245,0.22) 1px, transparent 1.5px) 0 0 / 6px 6px;
+  opacity: 0.28;
+}
+body.split-dragging .splitter::before{ opacity: 0.60; }
+
+/* =========================
+   Buttons (minimal)
+   ========================= */
+.icon-btn{
+  height: 36px;
+  min-width: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 0;
+  background: rgba(245,245,245,0.06);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.icon-btn:hover{
+  background: rgba(245,245,245,0.10);
+  box-shadow: 0 0 0 1px var(--glow), 0 0 14px var(--glow);
+}
+.icon-btn[disabled]{ opacity: 0.35; cursor: default; }
+
+.ico{ font-size: 0.95rem; line-height: 1; opacity: 0.92; }
+
+.step-controls{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.step-counter{
+  font-size: 0.80rem;
+  color: var(--muted);
+  padding: 0 12px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 12px;
+  background: rgba(245,245,245,0.04);
+}
+
+.qubit-controls{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
