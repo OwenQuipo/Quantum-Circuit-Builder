@@ -19,6 +19,25 @@
 #circuitPane:hover .toolstrip{ opacity: 0.85; pointer-events: auto; }
 body.has-selection #circuitToolstrip{ opacity: 1; pointer-events: auto; }
 
+#dragRoleBadge{
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+  z-index: 9999;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+  color: var(--text);
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+  box-shadow: 0 0 0 2px var(--line), 3px 3px 0 var(--shadow);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+#dragRoleBadge.on{ opacity: 0.95; }
+
 .micro-overlay{
   position: fixed;
   left: 12px;

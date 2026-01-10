@@ -167,7 +167,11 @@
   box-shadow: 0 0 0 2px var(--accent-strong), 4px 4px 0 var(--shadow);
   background: var(--surface2);
 }
-.cgate:active{ cursor: grabbing; transform: translateY(1px); }
+.cgate:active{
+  cursor: grabbing;
+  /* Keep centering while adding the slight press effect */
+  transform: translate(-50%, -50%) translateY(1px);
+}
 .cgate[data-gate="H"]{
   font-size: 1rem;
 }
@@ -337,3 +341,19 @@
   background: var(--surface2);
 }
 .gate-box.gate-measure .measure-icon{ transform: translateY(1px); }
+
+.cx-drag-label{
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  font-size: 0.5rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0 3px;
+  border-radius: 3px;
+  opacity: 0.9;
+  pointer-events: none;
+}

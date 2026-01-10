@@ -130,6 +130,7 @@ let tooltipEl = null;
 let tooltipTimer = null;
 let tooltipTarget = null;
 let tooltipRefreshQueued = false;
+let dragRoleBadgeEl = null;
 const PURITY_EPS = 1e-6;
 const THEME_KEY = "pixelMode";
 let themeMode = "dark";
@@ -607,7 +608,7 @@ function gateTooltip(g) {
     Z: "Pauli-Z: phase flip",
     S: "S gate: phase π/2",
     T: "T gate: phase π/4",
-    CX: "CNOT: flip target when control=1",
+    CX: "CNOT: drop control (C) first, then target (T)",
     M: "Measurement symbol (visual)",
   };
   return descriptions[g] || `Gate ${g}`;
@@ -845,6 +846,35 @@ function queueTooltipRefresh() {
   });
 }
 
+// -------------------- Drag role badge (CX clarity) --------------------
+function ensureDragRoleBadge() {
+  if (dragRoleBadgeEl) return dragRoleBadgeEl;
+  const el = document.createElement("div");
+  el.id = "dragRoleBadge";
+  document.body.appendChild(el);
+  dragRoleBadgeEl = el;
+  return el;
+}
+
+function showDragRoleBadge(text) {
+  const el = ensureDragRoleBadge();
+  el.textContent = text;
+  el.classList.add("on");
+}
+
+function hideDragRoleBadge() {
+  if (dragRoleBadgeEl) dragRoleBadgeEl.classList.remove("on");
+}
+
+function updateDragRoleBadgePosition(e) {
+  if (!dragRoleBadgeEl || !dragRoleBadgeEl.classList.contains("on")) return;
+  const pad = 8;
+  const x = Math.min(window.innerWidth - pad, e.clientX + 16);
+  const y = Math.min(window.innerHeight - pad, e.clientY + 16);
+  dragRoleBadgeEl.style.left = `${Math.max(pad, x)}px`;
+  dragRoleBadgeEl.style.top = `${Math.max(pad, y)}px`;
+}
+
 // -------------------- Gate matrix LaTeX (used for hover preview) --------------------
 function gateMatrixLatex(g) {
   const gate = GATES[g];
@@ -1040,6 +1070,13 @@ function renderGatePalette() {
       if (e.dataTransfer.setDragImage) {
         e.dataTransfer.setDragImage(box, 20, 20);
       }
+
+      if (g === "CX") {
+        const role = pendingCX ? "target" : "control";
+        showDragRoleBadge(`CNOT: drop ${role} (${role === "control" ? "C" : "T"})`);
+      } else {
+        hideDragRoleBadge();
+      }
     });
 
     item.addEventListener("dragend", () => {
@@ -1047,6 +1084,7 @@ function renderGatePalette() {
       draggingFrom = null;
       draggingOp = null;
       hideDropHighlight();
+      hideDragRoleBadge();
     });
 
     row.appendChild(item);
@@ -1058,15 +1096,16 @@ function renderGatePalette() {
     e.dataTransfer.dropEffect = (draggingFrom && draggingFrom.kind !== "palette") ? "move" : "copy";
   };
 
-    row.ondrop = (e) => {
-      e.preventDefault();
+  row.ondrop = (e) => {
+    e.preventDefault();
 
-      // If a gate was dragged from circuit into the library, it should disappear.
-      // Existing logic already "removes on dragstart" for circuit gates; we just finalize UI state.
+    // If a gate was dragged from circuit into the library, it should disappear.
+    // Existing logic already "removes on dragstart" for circuit gates; we just finalize UI state.
     draggingGate = null;
     draggingFrom = null;
     draggingOp = null;
     hideDropHighlight();
+    hideDragRoleBadge();
 
     renderCircuit();
     rebuildToStep(activeStep);
@@ -1480,11 +1519,15 @@ function renderCircuit() {
         g.dataset.gate = "CX";
         g.style.left = `${x}px`;
         g.style.top = `${y}px`;
-        g.dataset.tip = "CX control";
+        g.dataset.tip = "CNOT control (C)";
 
         const dot = document.createElement("div");
         dot.className = "ccontrol";
         g.appendChild(dot);
+        const label = document.createElement("span");
+        label.className = "cx-drag-label";
+        label.textContent = "C";
+        g.appendChild(label);
 
         g.setAttribute("draggable", "true");
 
@@ -1495,6 +1538,7 @@ function renderCircuit() {
           multiQ[s] = multiQ[s].filter((o) => o !== op);
           pendingCX = null;
           updateSelectionState();
+          showDragRoleBadge("CNOT: dragging control (C)");
 
           try { e.dataTransfer.setData("text/plain", "CX"); } catch {}
           e.dataTransfer.effectAllowed = "move";
@@ -1507,6 +1551,7 @@ function renderCircuit() {
           draggingFrom = null;
           draggingOp = null;
           hideDropHighlight();
+          hideDragRoleBadge();
           renderCircuit();
           rebuildToStep(activeStep);
         });
@@ -1522,11 +1567,15 @@ function renderCircuit() {
         g.dataset.gate = "CX";
         g.style.left = `${x}px`;
         g.style.top = `${y}px`;
-        g.dataset.tip = "CX target";
+        g.dataset.tip = "CNOT target (T)";
 
         const tgt = document.createElement("div");
         tgt.className = "ctarget";
         g.appendChild(tgt);
+        const label = document.createElement("span");
+        label.className = "cx-drag-label";
+        label.textContent = "T";
+        g.appendChild(label);
 
         g.setAttribute("draggable", "true");
 
@@ -1537,6 +1586,7 @@ function renderCircuit() {
           multiQ[s] = multiQ[s].filter((o) => o !== op);
           pendingCX = null;
           updateSelectionState();
+          showDragRoleBadge("CNOT: dragging target (T)");
 
           try { e.dataTransfer.setData("text/plain", "CX"); } catch {}
           e.dataTransfer.effectAllowed = "move";
@@ -1549,6 +1599,7 @@ function renderCircuit() {
           draggingFrom = null;
           draggingOp = null;
           hideDropHighlight();
+          hideDragRoleBadge();
           renderCircuit();
           rebuildToStep(activeStep);
         });
@@ -1582,6 +1633,7 @@ function renderCircuit() {
   grid.ondrop = (e) => {
     e.preventDefault();
     hideDropHighlight();
+    hideDragRoleBadge();
 
     const gate = draggingGate || e.dataTransfer.getData("text/plain");
     if (!gate) {
@@ -2573,6 +2625,8 @@ window.addEventListener("load", () => {
   renderGatePalette();
   updateGateHoverMath(null);
   initGateLibraryDrag();
+  document.addEventListener("dragover", updateDragRoleBadgePosition);
+  document.addEventListener("drag", updateDragRoleBadgePosition);
 
   // Keep qubit UI in sync at boot
   syncQubitCountUI();
