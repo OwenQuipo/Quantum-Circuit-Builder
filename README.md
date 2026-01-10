@@ -15,6 +15,10 @@ An interactive Three.js + MathJax web app for building simple quantum circuits, 
 - Production build: `npm run build`
 - Preview build: `npm run preview`
 
+## GitHub Pages (root)
+- Source lives in `src/` and the build outputs to repo root.
+- After `npm run build`, commit the generated `index.html` and `assets/` at the root.
+
 ## Usage Tips
 - Click the ket label on a wire to set its initial state.
 - Drag gates from the library onto the grid; right-click a placed gate to remove it.
