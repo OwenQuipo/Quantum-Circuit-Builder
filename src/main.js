@@ -99,6 +99,10 @@ const TIP_MAP = {
   menuClearCircuit: "🧹 Clear entire circuit",
   menuExportJson: "💾 Export circuit JSON",
   menuExportPng: "🖼 Export screenshot",
+  menuBellPhiPlus: "Prepare Bell Phi+ state",
+  menuBellPhiMinus: "Prepare Bell Phi- state",
+  menuBellPsiPlus: "Prepare Bell Psi+ state",
+  menuBellPsiMinus: "Prepare Bell Psi- state",
   themeToggle: "Switch dark / light mode",
   menuTheme: "Toggle theme",
   inspectRho: "⧉ Inspect density matrix",
@@ -123,6 +127,8 @@ let entanglementLevel = 0;
 let entangledPairs = new Map(); // key -> { qubits: [a,b], rho }
 let latestPairStates = new Map(); // key -> { qubits: [a,b], rho }
 let latestStateVector = null;
+let corrPairKey = null;
+const ENTANGLEMENT_LABEL_DEFAULT = "State stored in correlations";
 const BLOCH_TILE_SIZE_KEY = "blochTileMinPx";
 const SETTINGS_POS_KEY = "settingsPanelPos";
 const SETTINGS_COLLAPSE_KEY = "settingsPanelCollapsed";
@@ -191,6 +197,10 @@ function rebuildBlochGrid() {
     entPill.className = "entangled-tag";
     entPill.textContent = "Entangled";
     header.appendChild(entPill);
+    const bellPill = document.createElement("span");
+    bellPill.className = "bell-tag";
+    bellPill.textContent = "";
+    header.appendChild(bellPill);
     tile.appendChild(header);
 
     const mount = document.createElement("div");
@@ -229,7 +239,17 @@ function rebuildBlochGrid() {
     ro.observe(mount);
     ro.observe(tile);
 
-    widgets.push({ tileEl: tile, mountEl: mount, widget, ro, purityEl: purity, measEl: meas, stateChipEl: stateChip, entTagEl: entPill });
+    widgets.push({
+      tileEl: tile,
+      mountEl: mount,
+      widget,
+      ro,
+      purityEl: purity,
+      measEl: meas,
+      stateChipEl: stateChip,
+      entTagEl: entPill,
+      bellTagEl: bellPill,
+    });
   }
 
   refreshSelectedUI();
@@ -694,6 +714,39 @@ function seedReferenceCircuit() {
   placeSingleGate(0, 1, "H");
   placeCXDirect(3, 0, 1);
   placeSingleGate(0, 5, "M");
+}
+
+function prepareBellState(kind = "phiPlus") {
+  if (!circuitIsEmpty()) {
+    const ok = window.confirm("Replace the current circuit with a Bell state preset?");
+    if (!ok) return;
+  }
+  stopPlayback();
+  if (qubitCount < 2) setQubitCount(2);
+  initCircuitModel();
+
+  initialStates[0] = "0";
+  initialStates[1] = "0";
+  ensureCircuitDimensions();
+
+  const preStep = 0;
+  const hStep = 1;
+  const cxStep = 3;
+  const presets = {
+    phiPlus: [],
+    phiMinus: [{ q: 0, gate: "X" }],
+    psiPlus: [{ q: 1, gate: "X" }],
+    psiMinus: [{ q: 0, gate: "X" }, { q: 1, gate: "X" }],
+  };
+  const preOps = presets[kind] || presets.phiPlus;
+  preOps.forEach(({ q, gate }) => placeSingleGate(q, preStep, gate));
+  placeSingleGate(0, hStep, "H");
+  placeCXDirect(cxStep, 0, 1);
+
+  renderCircuit();
+  activeStep = -1;
+  updateActiveStepUI();
+  rebuildToStep(activeStep);
 }
 
 function ensureInitialStates() {
@@ -2232,12 +2285,29 @@ function updateGlobalStateBadges(pairMap = entangledPairs) {
   pairMap?.forEach((entry, key) => {
     if (isEntangledFromRho(entry.rho)) bells.set(key, describeBellState(entry.rho));
   });
+  const entanglementBadge = $("entanglementBadge");
+  if (entanglementBadge) {
+    const primaryKey = makePairKey(entangledPairIndices[0], entangledPairIndices[1]);
+    const bell = bells.get(primaryKey) || Array.from(bells.values()).find((label) => label) || null;
+    entanglementBadge.innerHTML = bell ? `\\(${bellToLatex(bell)}\\)` : `\\(\\text{${ENTANGLEMENT_LABEL_DEFAULT}}\\)`;
+    typesetNode(entanglementBadge);
+  }
+  const pairLabels = new Map();
+  bells.forEach((label, key) => {
+    if (label) pairLabels.set(key, bellToGlyph(label));
+  });
+  entanglementVisuals?.setPairLabels?.(pairLabels);
+  const pairColors = entanglementVisuals?.getPairColorStyles?.() || new Map();
   widgets.forEach((w, idx) => {
     const badge = w?.stateChipEl;
+    const entTag = w?.entTagEl;
+    const bellTag = w?.bellTagEl;
     if (!badge) return;
     if (measuredVisualOutcomes[idx] != null) {
       // already handled by measurement visual
       badge.classList.remove("entangled");
+      if (entTag) entTag.textContent = "Entangled";
+      if (bellTag) bellTag.classList.remove("on");
       return;
     }
     const entry = entangledPairForQubit(idx, pairMap);
@@ -2248,8 +2318,24 @@ function updateGlobalStateBadges(pairMap = entangledPairs) {
       badge.classList.add("on");
       badge.classList.add("entangled");
       typesetNode(badge);
+      if (entTag) entTag.textContent = "Entangled";
+      if (bellTag) {
+        const latex = bell ? bellToLatex(bell) : "";
+        const color = pairColors.get(entry.key);
+        bellTag.innerHTML = latex ? `\\(${latex}\\)` : "";
+        bellTag.classList.toggle("on", !!latex);
+        bellTag.style.backgroundColor = color || "";
+        bellTag.style.color = color ? textColorForBg(color) : "";
+        if (latex) typesetNode(bellTag);
+      }
     } else {
       badge.classList.remove("entangled");
+      if (entTag) entTag.textContent = "Entangled";
+      if (bellTag) {
+        bellTag.classList.remove("on");
+        bellTag.style.backgroundColor = "";
+        bellTag.style.color = "";
+      }
     }
   });
 }
@@ -2304,6 +2390,30 @@ function bellToLatex(label) {
   if (label.includes("Ψ+") || label.includes("Psi") || label.includes("psi")) return "|\\Psi^{+}\\rangle";
   if (label.includes("Ψ-") || label.includes("Psi-") || label.includes("psi-")) return "|\\Psi^{-}\\rangle";
   return label;
+}
+
+function bellToGlyph(label) {
+  if (label.includes("Φ+") || label.includes("Phi") || label.includes("phi")) return "Φ+";
+  if (label.includes("Φ-") || label.includes("Phi-") || label.includes("phi-")) return "Φ-";
+  if (label.includes("Ψ+") || label.includes("Psi") || label.includes("psi")) return "Ψ+";
+  if (label.includes("Ψ-") || label.includes("Psi-") || label.includes("psi-")) return "Ψ-";
+  return "ENT";
+}
+
+function bellToTagText(label) {
+  if (label.includes("Φ+") || label.includes("Phi") || label.includes("phi")) return "|Φ+⟩";
+  if (label.includes("Φ-") || label.includes("Phi-") || label.includes("phi-")) return "|Φ-⟩";
+  if (label.includes("Ψ+") || label.includes("Psi") || label.includes("psi")) return "|Ψ+⟩";
+  if (label.includes("Ψ-") || label.includes("Psi-") || label.includes("psi-")) return "|Ψ-⟩";
+  return "Entangled";
+}
+
+function textColorForBg(color) {
+  const rgb = color.match(/\d+/g)?.map((v) => Number(v));
+  if (!rgb || rgb.length < 3) return "#0b0b0b";
+  const [r, g, b] = rgb;
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance > 0.6 ? "#0b0b0b" : "#fdfdfd";
 }
 
 function updateStateChip(q, state, pairMap = entangledPairs) {
@@ -2742,6 +2852,18 @@ window.addEventListener("load", () => {
     const ok = window.confirm("Clear the circuit? This cannot be undone.");
     if (!ok) return;
     clearCircuit();
+  });
+
+  [
+    ["menuBellPhiPlus", "phiPlus"],
+    ["menuBellPhiMinus", "phiMinus"],
+    ["menuBellPsiPlus", "psiPlus"],
+    ["menuBellPsiMinus", "psiMinus"],
+  ].forEach(([id, kind]) => {
+    $(id)?.addEventListener("click", () => {
+      closeMenu();
+      prepareBellState(kind);
+    });
   });
 
   ["menuExportJson","menuExportPng","menuTheme","menuShortcuts","menuSimulation"].forEach((id) => {

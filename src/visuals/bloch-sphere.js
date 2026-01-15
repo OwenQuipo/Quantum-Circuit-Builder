@@ -198,6 +198,7 @@ class BlochSphereWidget {
       fogSeed: Math.random() * 1000,
       glyphTexture: null,
       glyphSprite: null,
+      glyphLabel: "ENT",
       glyphScale: 0,
       flash: 0,
       rgbShift: new THREE.Vector2(0, 0),
@@ -499,7 +500,7 @@ class BlochSphereWidget {
     this._redrawFromState(false);
   }
 
-  setEntanglementVisuals({ level = 0, colorA, colorB, flash = 0, rgbShift, cameraShake = 0 } = {}) {
+  setEntanglementVisuals({ level = 0, colorA, colorB, flash = 0, rgbShift, cameraShake = 0, label } = {}) {
     this.entanglement.level = Math.max(0, Math.min(1, level));
     let paletteChanged = false;
     if (colorA && !this.entanglement.colorA.equals(colorA)) {
@@ -514,6 +515,7 @@ class BlochSphereWidget {
     if (rgbShift) this.entanglement.rgbShift.copy(rgbShift);
     else this.entanglement.rgbShift.set(0, 0);
     this.entanglement.cameraShake = cameraShake;
+    if (label) this._updateGlyphLabel(label);
     if (paletteChanged) {
       this.entanglement.mix.copy(this.entanglement.colorA.clone().lerp(this.entanglement.colorB, 0.5));
       this._refreshFogTexture();
@@ -587,7 +589,7 @@ class BlochSphereWidget {
   }
 
   _initGlyph() {
-    const glyphTex = makeGlyphTexture("Φ+");
+    const glyphTex = makeGlyphTexture(this.entanglement.glyphLabel || "ENT");
     const glyphMat = new THREE.SpriteMaterial({
       map: glyphTex,
       transparent: true,
@@ -603,6 +605,18 @@ class BlochSphereWidget {
     this.blochGroup.add(sprite);
     this.entanglement.glyphTexture = glyphTex;
     this.entanglement.glyphSprite = sprite;
+  }
+
+  _updateGlyphLabel(label) {
+    const next = label || "ENT";
+    if (this.entanglement.glyphLabel === next) return;
+    this.entanglement.glyphLabel = next;
+    if (!this.entanglement.glyphSprite?.material) return;
+    const tex = makeGlyphTexture(next);
+    this.entanglement.glyphTexture?.dispose?.();
+    this.entanglement.glyphTexture = tex;
+    this.entanglement.glyphSprite.material.map = tex;
+    this.entanglement.glyphSprite.material.needsUpdate = true;
   }
 
   _refreshFogTexture() {

@@ -73,6 +73,16 @@
           <div class="menu-sep"></div>
 
           <div class="menu-group" role="none">
+            <div class="menu-label">Bell states</div>
+            <button class="menu-item" id="menuBellPhiPlus" role="menuitem">Bell &Phi;+</button>
+            <button class="menu-item" id="menuBellPhiMinus" role="menuitem">Bell &Phi;-</button>
+            <button class="menu-item" id="menuBellPsiPlus" role="menuitem">Bell &Psi;+</button>
+            <button class="menu-item" id="menuBellPsiMinus" role="menuitem">Bell &Psi;-</button>
+          </div>
+
+          <div class="menu-sep"></div>
+
+          <div class="menu-group" role="none">
             <div class="menu-label">Export…</div>
             <button class="menu-item" id="menuExportJson" role="menuitem">Export JSON</button>
             <button class="menu-item" id="menuExportPng" role="menuitem">Export PNG</button>
@@ -104,6 +114,11 @@
               <div class="micro-title">Correlations</div>
               <button id="inspectRho" class="micro-icon" title="Inspect density matrix">⧉</button>
             </div>
+            <div class="corr-pair">
+              <span class="corr-label" id="corrPairLabel">Pair</span>
+              <select id="corrPairSelect" class="corr-select" aria-label="Select qubit pair"></select>
+            </div>
+            <div class="corr-hint">Choose a pair to view ⟨X⊗X⟩, ⟨Y⊗Y⟩, ⟨Z⊗Z⟩.</div>
             <div class="corr-row"><span>&lt;X⊗X&gt;</span><div class="corr-bar"><div id="corrXX" class="corr-fill"></div></div><span id="corrXXVal" class="corr-val">0</span></div>
             <div class="corr-row"><span>&lt;Y⊗Y&gt;</span><div class="corr-bar"><div id="corrYY" class="corr-fill"></div></div><span id="corrYYVal" class="corr-val">0</span></div>
             <div class="corr-row"><span>&lt;Z⊗Z&gt;</span><div class="corr-bar"><div id="corrZZ" class="corr-fill"></div></div><span id="corrZZVal" class="corr-val">0</span></div>

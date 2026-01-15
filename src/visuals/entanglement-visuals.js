@@ -19,6 +19,10 @@ class EntanglementVisuals {
 
     this.colorA = new THREE.Color(getCssColor("--pop-cyan", "#67d5ff"));
     this.colorB = new THREE.Color(getCssColor("--pop-pink", "#ff6fa3"));
+    this.palette = [];
+    this.pairColors = [];
+    this.pairColorMap = new Map();
+    this.pairLabels = new Map();
 
     this.burst = {
       flashUntil: 0,
@@ -38,6 +42,7 @@ class EntanglementVisuals {
     this._raf = null;
     this._lastTime = performance.now();
 
+    this.refreshPalette();
     this._initScene();
     this._loop();
   }
@@ -48,19 +53,49 @@ class EntanglementVisuals {
 
   setPair(pair = [0, 1]) {
     this.pairs = [pair];
+    this._assignPairColors();
   }
 
   setPairs(pairs = []) {
     if (!pairs?.length) {
       this.pairs = [];
+      this.pairColors = [];
       return;
     }
     this.pairs = pairs.map((p) => [p[0], p[1]]);
+    this._assignPairColors();
+  }
+
+  setPairLabels(labels = new Map()) {
+    this.pairLabels = new Map(labels);
+  }
+
+  getPairColorStyles() {
+    const styles = new Map();
+    if (!this.pairs?.length) return styles;
+    this.pairs.forEach((pair) => {
+      const key = this._pairKey(pair);
+      const paletteIndex = this.pairColorMap?.get?.(key);
+      const color = (Number.isInteger(paletteIndex) && this.palette?.[paletteIndex])
+        ? this.palette[paletteIndex]
+        : (this.palette?.[0] || this.colorA);
+      styles.set(key, color.getStyle());
+    });
+    return styles;
   }
 
   refreshPalette() {
-    this.colorA.set(getCssColor("--pop-cyan", "#67d5ff"));
-    this.colorB.set(getCssColor("--pop-pink", "#ff6fa3"));
+    const palette = [
+      new THREE.Color(getCssColor("--pop-cyan", "#67d5ff")),
+      new THREE.Color(getCssColor("--pop-pink", "#ff6fa3")),
+      new THREE.Color(getCssColor("--pop-lime", "#9dff7a")),
+      new THREE.Color(getCssColor("--pop-amber", "#ffd36a")),
+      new THREE.Color(getCssColor("--pop-blue", "#7aa8ff")),
+    ];
+    this.palette = palette;
+    this.colorA.copy(palette[0]);
+    this.colorB.copy(palette[1] || palette[0]);
+    this._assignPairColors();
   }
 
   isAnimating() {
@@ -173,11 +208,13 @@ class EntanglementVisuals {
       if (!w || !w.setEntanglementVisuals) return;
       const isPair = involved.has(idx);
       const pairIdx = activePairs.findIndex((p) => p[0] === idx || p[1] === idx);
-      const color = pairIdx % 2 === 0 ? this.colorA : this.colorB;
+      const color = this.pairColors[pairIdx] || this.palette[0] || this.colorA;
+      const label = this._labelForPair(activePairs[pairIdx]);
       w.setEntanglementVisuals({
         level: isPair ? level : 0,
         colorA: color,
         colorB: color,
+        label,
         flash: isPair ? flash : 0,
         rgbShift: rgbSplit,
         cameraShake: isPair ? shake : 0,
@@ -282,11 +319,75 @@ class EntanglementVisuals {
       const ay = aRect.top + aRect.height / 2 - root.top + scrollY;
       const bx = bRect.left + bRect.width / 2 - root.left + scrollX;
       const by = bRect.top + bRect.height / 2 - root.top + scrollY;
-      const colorA = (idx % 2 === 0 ? this.colorA : this.colorB).getStyle();
+      const colorA = (this.pairColors[idx] || this.palette[0] || this.colorA).getStyle();
       const colorB = colorA;
       anchors.push({ ax, ay, bx, by, colorA, colorB });
     });
     return anchors;
+  }
+
+  _assignPairColors() {
+    const pairCount = this.pairs?.length || 0;
+    if (!pairCount) {
+      this.pairColors = [];
+      this.pairColorMap = new Map();
+      return;
+    }
+    const palette = this.palette?.length ? this.palette : [this.colorA, this.colorB];
+    const paletteCount = palette.length;
+    const previousMap = this.pairColorMap || new Map();
+    const nextMap = new Map();
+    const used = new Set();
+    const available = Array.from({ length: paletteCount }, (_, idx) => idx);
+
+    const pickAvailableIndex = () => {
+      if (!available.length) {
+        return Math.floor(Math.random() * paletteCount);
+      }
+      const choiceIdx = Math.floor(Math.random() * available.length);
+      const [picked] = available.splice(choiceIdx, 1);
+      return picked;
+    };
+
+    this.pairs.forEach((pair) => {
+      const key = this._pairKey(pair);
+      const prevIndex = previousMap.get(key);
+      if (Number.isInteger(prevIndex) && prevIndex >= 0 && prevIndex < paletteCount && !used.has(prevIndex)) {
+        nextMap.set(key, prevIndex);
+        used.add(prevIndex);
+        const availIdx = available.indexOf(prevIndex);
+        if (availIdx >= 0) available.splice(availIdx, 1);
+      }
+    });
+
+    this.pairs.forEach((pair) => {
+      const key = this._pairKey(pair);
+      if (nextMap.has(key)) return;
+      const picked = pickAvailableIndex();
+      nextMap.set(key, picked);
+      used.add(picked);
+    });
+
+    this.pairColorMap = nextMap;
+    this.pairColors = [];
+    for (let i = 0; i < pairCount; i++) {
+      const key = this._pairKey(this.pairs[i]);
+      const paletteIndex = nextMap.get(key);
+      this.pairColors[i] = palette[paletteIndex] || palette[0];
+    }
+  }
+
+  _pairKey(pair = []) {
+    const a = pair[0] ?? 0;
+    const b = pair[1] ?? 0;
+    return a < b ? `${a}-${b}` : `${b}-${a}`;
+  }
+
+  _labelForPair(pair) {
+    if (!pair) return "ENT";
+    const key = this._pairKey(pair);
+    const label = this.pairLabels?.get?.(key);
+    return label || "ENT";
   }
 
   _watchResize() {
