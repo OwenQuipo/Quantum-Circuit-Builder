@@ -143,10 +143,6 @@
             <span class="settings-title">Settings</span>
             <div class="settings-actions">
               <button id="settingsCollapse" class="micro-icon" title="Collapse/expand">▾</button>
-              <button data-corner="tl" class="micro-icon corner-btn" title="Snap top-left">↖</button>
-              <button data-corner="tr" class="micro-icon corner-btn" title="Snap top-right">↗</button>
-              <button data-corner="bl" class="micro-icon corner-btn" title="Snap bottom-left">↙</button>
-              <button data-corner="br" class="micro-icon corner-btn" title="Snap bottom-right">↘</button>
             </div>
           </div>
           <div id="settingsBody" class="settings-body">
@@ -164,6 +160,12 @@
                 <span class="micro-pill">Tile size</span>
               <input id="blochTileSize" type="range" min="120" max="520" step="10" value="320" />
               <span id="blochTileSizeVal" class="micro-pill size-val">320px</span>
+              </label>
+
+              <label class="micro-slider" title="Adjust noise intensity">
+                <span class="micro-pill">Noise</span>
+              <input id="noiseLevel" type="range" min="0" max="100" step="1" value="45" />
+              <span id="noiseLevelVal" class="micro-pill size-val">45%</span>
               </label>
 
             <button id="openProbPopover" class="micro-btn" title="Probabilities">

@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { CoinFlipAnimator } from "./visuals/coin-flip";
 import { BlochSphereWidget } from "./visuals/bloch-sphere";
 import { EntanglementVisuals } from "./visuals/entanglement-visuals";
+import { NoiseOverlayEngine } from "./visuals/noise-overlay";
 import { $, setText } from "./utils/dom";
 import {
   EXACT_COMPLEX,
@@ -123,6 +124,7 @@ let coinAnimator = null;
 let measurementAnimRunId = 0;
 let entangledPairIndices = [0, 1];
 let entanglementVisuals = null;
+let noiseOverlay = null;
 let entanglementLevel = 0;
 let entangledPairs = new Map(); // key -> { qubits: [a,b], rho }
 let latestPairStates = new Map(); // key -> { qubits: [a,b], rho }
@@ -130,6 +132,7 @@ let latestStateVector = null;
 let corrPairKey = null;
 const ENTANGLEMENT_LABEL_DEFAULT = "State stored in correlations";
 const BLOCH_TILE_SIZE_KEY = "blochTileMinPx";
+const NOISE_LEVEL_KEY = "noiseLevel";
 const SETTINGS_POS_KEY = "settingsPanelPos";
 const SETTINGS_COLLAPSE_KEY = "settingsPanelCollapsed";
 let tooltipEl = null;
@@ -163,6 +166,7 @@ function applyTheme(mode) {
   widgets.forEach(({ widget }) => widget?.setTheme?.(themeMode));
   coinAnimator?.setTheme?.(themeMode);
   entanglementVisuals?.refreshPalette?.();
+  noiseOverlay?.setTheme?.(themeMode);
 }
 
 function toggleThemeMode() {
@@ -322,6 +326,7 @@ function syncQubitCountUI() {
 // -------------------- Primary splitter --------------------
 const SPLIT_STORAGE_KEY = "primarySplitLeftPx";
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function lerp(a, b, t) { return a + (b - a) * clamp(t, 0, 1); }
 function makePairKey(a, b) { return a < b ? `${a}-${b}` : `${b}-${a}`; }
 function entangledPairForQubit(q, map = entangledPairs) {
   for (const [key, pair] of map.entries()) {
@@ -349,6 +354,21 @@ function applyBlochTileSize(px) {
   document.body.classList.toggle("bloch-single-col", clamped >= 520);
 }
 
+function applyNoiseLevel(level) {
+  const clamped = clamp(level, 0, 1);
+  const pct = Math.round(clamped * 100);
+  const label = $("noiseLevelVal");
+  if (label) label.textContent = `${pct}%`;
+  const slider = $("noiseLevel");
+  if (slider && Number(slider.value) !== pct) slider.value = String(pct);
+  noiseOverlay?.setConfig?.({
+    temperature: clamped,
+    p_gate: lerp(0.12, 0.46, clamped),
+    crosstalk_strength: lerp(0.06, 0.36, clamped),
+    visualIntensity: clamped,
+  });
+}
+
 function initBlochTileSizer() {
   const saved = Number(localStorage.getItem(BLOCH_TILE_SIZE_KEY));
   const initial = Number.isFinite(saved) ? saved : 320;
@@ -360,6 +380,20 @@ function initBlochTileSizer() {
       applyBlochTileSize(val);
       localStorage.setItem(BLOCH_TILE_SIZE_KEY, String(clamp(val, 120, 520)));
       requestAnimationFrame(resizeAllWidgets);
+    });
+  }
+}
+
+function initNoiseSlider() {
+  const saved = Number(localStorage.getItem(NOISE_LEVEL_KEY));
+  const initial = Number.isFinite(saved) ? clamp(saved, 0, 1) : 0.45;
+  applyNoiseLevel(initial);
+  const slider = $("noiseLevel");
+  if (slider) {
+    slider.addEventListener("input", (e) => {
+      const val = clamp(Number(e.target.value) / 100, 0, 1);
+      applyNoiseLevel(val);
+      localStorage.setItem(NOISE_LEVEL_KEY, String(val));
     });
   }
 }
@@ -422,14 +456,6 @@ function initSettingsPanelDrag() {
     });
     window.addEventListener("pointerup", endDrag);
     window.addEventListener("pointercancel", endDrag);
-  });
-
-  document.querySelectorAll(".corner-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const corner = btn.dataset.corner;
-      applyPos({ corner });
-      localStorage.setItem(SETTINGS_POS_KEY, JSON.stringify({ corner }));
-    });
   });
 
   const collapseBtn = $("settingsCollapse");
@@ -609,6 +635,66 @@ function wireFromY(y) {
 function wireCenterY(q) { return C_TOP_PAD + q * C_ROW_H + C_ROW_H / 2; }
 function stepCenterX(s) { return C_LABEL_W + s * C_STEP_W + C_STEP_W / 2; }
 
+function wirePositionAt(q, t) {
+  const maxStep = Math.max(1, stepCount) - 1;
+  const base = clamp(Math.floor(t), 0, maxStep);
+  const next = clamp(base + 1, 0, maxStep);
+  const frac = clamp(t - base, 0, 1);
+  const x = lerp(stepCenterX(base), stepCenterX(next), frac);
+  const y = wireCenterY(q);
+  return { x, y };
+}
+
+function getActiveGatesAtTime(t) {
+  if (stepCount <= 0) return [];
+  const step = clamp(Math.floor(t), 0, stepCount - 1);
+  const gates = [];
+  for (let q = 0; q < qubitCount; q++) {
+    const g = singleQ[q]?.[step];
+    if (!g) continue;
+    gates.push({ type: g, targets: [q], start: step, duration: 1 });
+  }
+  for (const op of multiQ[step] || []) {
+    if (op.type !== "CX") continue;
+    gates.push({
+      type: "CX",
+      targets: [op.target],
+      controls: [op.control],
+      start: step,
+      duration: 1,
+    });
+  }
+  return gates;
+}
+
+function ensureNoiseOverlay() {
+  const canvas = $("circuit-canvas");
+  if (!canvas) return null;
+  if (!noiseOverlay) {
+    noiseOverlay = new NoiseOverlayEngine({
+      containerEl: canvas,
+      getActiveGates: getActiveGatesAtTime,
+      getWirePosition: wirePositionAt,
+      qubitCount,
+      stepCount,
+    });
+    noiseOverlay.setTheme?.(themeMode);
+    noiseOverlay.setEntangledPairs?.(Array.from(entangledPairs.values()).map((p) => p.qubits));
+    noiseOverlay.setActiveStep?.(activeStep);
+    noiseOverlay.setPlaying?.(playing);
+    const slider = $("noiseLevel");
+    const saved = Number(localStorage.getItem(NOISE_LEVEL_KEY));
+    const fallback = Number(slider?.value ?? NaN);
+    const level = Number.isFinite(saved) ? saved : (Number.isFinite(fallback) ? fallback / 100 : 0.45);
+    applyNoiseLevel(level);
+  } else {
+    noiseOverlay.attachTo(canvas);
+    noiseOverlay.setQubitCount(qubitCount);
+    noiseOverlay.setStepCount(stepCount);
+  }
+  return noiseOverlay;
+}
+
 function gateColorClass(g) {
   if (g === "X") return "gate-x";
   if (g === "Y") return "gate-y";
@@ -745,6 +831,8 @@ function prepareBellState(kind = "phiPlus") {
 
   renderCircuit();
   activeStep = -1;
+  ensureNoiseOverlay();
+  noiseOverlay?.resize?.();
   updateActiveStepUI();
   rebuildToStep(activeStep);
 }
@@ -1200,6 +1288,7 @@ let stepBusy = false;
 function updateActiveStepUI() {
   setText("activeStepLabel", activeStep < 0 ? "–" : String(activeStep));
   setText("stepCountLabel", String(stepCount));
+  noiseOverlay?.setActiveStep?.(activeStep);
 
   document.querySelectorAll(".cstep-highlight").forEach((el) => {
     const s = Number(el.dataset.step);
@@ -1234,8 +1323,11 @@ function rebuildToStep(stepIdx) {
   latestGlobalRho = rho2;
   latestStateVector = stateVector;
   entanglementVisuals?.setPairs?.(Array.from(entangledPairs.values()).map((p) => p.qubits));
+  noiseOverlay?.setEntangledPairs?.(Array.from(entangledPairs.values()).map((p) => p.qubits));
+  noiseOverlay?.setActiveStep?.(stepIdx);
   const entangledNow = entangledPairs.size > 0;
   const eventsThisStep = (measuredEvents || []).filter((ev) => ev.step === stepIdx);
+  noiseOverlay?.notifyMeasurements?.(eventsThisStep);
   const shouldAnimateMeasure = measurementAnimEnabled && !!coinAnimator && stepIdx >= 0 && eventsThisStep.length > 0;
   const holdMap = new Map();
 
@@ -1298,6 +1390,7 @@ function stopPlayback() {
     clearTimeout(playTimer);
     playTimer = null;
   }
+  noiseOverlay?.setPlaying?.(false);
   const icon = $("playIcon");
   if (icon) icon.textContent = "▶";
 }
@@ -1306,6 +1399,7 @@ function startPlayback() {
   if (playing) return;
   playing = true;
   document.body.classList.add("is-playing");
+  noiseOverlay?.setPlaying?.(true);
   const icon = $("playIcon");
   if (icon) icon.textContent = "⏸";
   scheduleNextTick();
@@ -1392,6 +1486,7 @@ function resetStepCursor() {
   clearMeasurementOutcomesFrom(0);
   updateActiveStepUI();
   rebuildToStep(activeStep);
+  noiseOverlay?.reset?.();
 }
 
 // -------------------- Circuit render (existing) --------------------
@@ -1744,6 +1839,8 @@ function renderCircuit() {
     rebuildToStep(activeStep);
   };
 
+  ensureNoiseOverlay();
+  noiseOverlay?.resize?.();
   updateActiveStepUI();
 
   if (typeof MathJax !== "undefined") MathJax.typesetPromise([canvas]);
@@ -1757,6 +1854,7 @@ function clearCircuit() {
   activeStep = -1;
   updateActiveStepUI();
   rebuildToStep(activeStep);
+  noiseOverlay?.reset?.();
 }
 
 // -------------------- Qubit count (now always accessible from topbar) --------------------
@@ -1768,6 +1866,7 @@ function setQubitCount(n) {
   ensureInitialStates();
   rebuildBlochGrid();
   renderCircuit();
+  noiseOverlay?.setQubitCount?.(qubitCount);
 
   activeStep = clamp(activeStep, -1, stepCount - 1);
   updateActiveStepUI();
@@ -2512,6 +2611,7 @@ function measureQubit(idx) {
     latestGlobalRho = entangledPairIndices ? pairRhoFromStateVector(latestStateVector, entangledPairIndices[0], entangledPairIndices[1], qubitCount) : null;
     measurementOverrideRho = latestGlobalRho;
   entanglementVisuals?.setPairs?.(Array.from(entangledPairs.values()).map((p) => p.qubits));
+  noiseOverlay?.setEntangledPairs?.(Array.from(entangledPairs.values()).map((p) => p.qubits));
 
     for (let q = 0; q < qubitCount; q++) {
       const rho = reducedRhoFromStateVector(latestStateVector, q, qubitCount);
@@ -2524,6 +2624,7 @@ function measureQubit(idx) {
     }
 
     applyMeasurementVisual(idx, outcome, { cue: true, snap: true });
+    noiseOverlay?.triggerManualMeasurement?.(idx);
     updateEntanglementIndicators(entangledPairs);
     updateCorrelationsPanel();
     updateProbPopover();
@@ -2564,6 +2665,7 @@ function measureQubit(idx) {
     updateStateChip(q, states[q], entangledPairs);
   }
   applyMeasurementVisual(idx, outcome, { cue: true, snap: true });
+  noiseOverlay?.triggerManualMeasurement?.(idx);
   updateEntanglementIndicators(entangledPairs);
   updateCorrelationsPanel();
   updateProbPopover();
@@ -2729,6 +2831,7 @@ window.addEventListener("load", () => {
 
   initPrimarySplitter();
   initBlochTileSizer();
+  initNoiseSlider();
   initSettingsPanelDrag();
 
   // Gate library: always visible + render once
@@ -2924,7 +3027,10 @@ $("gateLibToggle")?.addEventListener("click", (e) => {
   // Ensure Bloch renderer keeps up with circuit-grid resize
   const circuitGrid = $("circuit-grid");
   if (circuitGrid) {
-    const ro = new ResizeObserver(() => requestAnimationFrame(resizeAllWidgets));
+    const ro = new ResizeObserver(() => requestAnimationFrame(() => {
+      resizeAllWidgets();
+      noiseOverlay?.resize?.();
+    }));
     ro.observe(circuitGrid);
   }
 

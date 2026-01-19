@@ -76,17 +76,6 @@ body.is-playing #blochOverlay{ opacity: 0.25; }
   display: inline-flex;
   gap: 4px;
 }
-.corner-btn{
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  border: 2px solid var(--line-strong);
-  background: var(--surface2);
-  color: var(--text);
-  cursor: pointer;
-  box-shadow: 0 0 0 2px var(--line);
-}
-.corner-btn:hover{ background: var(--surface); }
 .settings-body{
   display: inline-flex;
   gap: 8px;
