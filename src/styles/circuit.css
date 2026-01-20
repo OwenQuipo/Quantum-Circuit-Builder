@@ -366,3 +366,123 @@
   opacity: 0.9;
   pointer-events: none;
 }
+#quietHideCircuit{
+  display: none;
+}
+body.quiet-mode.quiet-show-circuit #quietHideCircuit{
+  display: inline-flex;
+}
+#circuitPane{
+  position: relative;
+}
+body.quiet-mode.quiet-show-circuit #circuitPane{
+  display: flex !important;
+  align-items: flex-end;
+  justify-content: center;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0;
+  overflow: visible !important;
+  position: absolute !important;
+  inset: 0 !important;
+  pointer-events: none;
+}
+body.quiet-mode.quiet-show-circuit #circuitPane.pane{
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0;
+  overflow: visible !important;
+}
+body.quiet-mode.quiet-show-circuit .cstep-highlight,
+body.quiet-mode.quiet-show-circuit .cstep-highlight.on{
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.2;
+}
+body.quiet-mode.quiet-show-circuit #circuitCanvas{
+  width: min(56vmin, 560px);
+  height: min(24vmin, 240px);
+  padding: 0;
+  margin-bottom: clamp(40px, 10vh, 120px);
+  background: transparent !important;
+  background-image: none !important;
+  pointer-events: auto;
+}
+body.quiet-mode.quiet-show-circuit #circuit-grid{
+  background: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  min-width: 0;
+  min-height: 0;
+  resize: none;
+  overflow: visible;
+}
+body.quiet-mode.quiet-show-circuit .toolstrip{
+  opacity: 0.35;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+body.quiet-mode.quiet-show-circuit #gateLibrary{
+  display: block !important;
+  position: fixed;
+  left: clamp(18px, 6vw, 64px);
+  right: auto !important;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0;
+  bottom: auto !important;
+}
+body.quiet-mode.quiet-show-circuit #gateLibrary .floating-header,
+body.quiet-mode.quiet-show-circuit #gateLibrary .floating-hint,
+body.quiet-mode.quiet-show-circuit #gateLibrary .gate-hover-math{
+  display: none;
+}
+body.quiet-mode.quiet-show-circuit .palette-gate{
+  background: transparent;
+  border: none;
+  padding: 4px;
+}
+body.quiet-mode.quiet-show-circuit .gate-box{
+  background: #ffffff;
+  border: 2px solid #111111;
+  color: #111111;
+  box-shadow: none;
+}
+body.quiet-mode.quiet-show-circuit{
+  --circuit-wire: #111111;
+  --circuit-wire-faint: #444444;
+  --circuit-gate-bg: #ffffff;
+  --circuit-gate-border: #111111;
+  --circuit-gate-glow: transparent;
+}
+body.quiet-mode.quiet-show-circuit .cgate,
+body.quiet-mode.quiet-show-circuit .gate-x,
+body.quiet-mode.quiet-show-circuit .gate-y,
+body.quiet-mode.quiet-show-circuit .gate-z,
+body.quiet-mode.quiet-show-circuit .gate-h,
+body.quiet-mode.quiet-show-circuit .gate-s,
+body.quiet-mode.quiet-show-circuit .gate-t,
+body.quiet-mode.quiet-show-circuit .gate-m{
+  background: #ffffff;
+  color: #111111;
+  border-color: #111111;
+  box-shadow: none;
+}
+body.quiet-mode.quiet-show-circuit .ccontrol{
+  background: #111111;
+}
+body.quiet-mode.quiet-show-circuit .ctarget{
+  box-shadow: inset 0 0 0 2px #111111;
+}
+body.quiet-mode.quiet-show-circuit .ctarget::before,
+body.quiet-mode.quiet-show-circuit .ctarget::after{
+  background: #111111;
+}

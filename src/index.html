@@ -6,6 +6,8 @@
   <title>Qubit Visualizer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+  <link rel="stylesheet" href="/src/styles/index.css" />
+
   <!-- MathJax for LaTeX rendering -->
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
 </head>
@@ -17,6 +19,11 @@
          ========================= -->
     <header id="topbar" role="banner">
       <div id="title" aria-label="App title">Qubit Visualizer</div>
+
+      <button id="beginnerToggle" class="icon-btn" title="Toggle beginner mode" aria-label="Toggle beginner mode">
+        <span class="ico">◎</span>
+        <span id="beginnerToggleLabel">Beginner</span>
+      </button>
 
       <button id="themeToggle" class="icon-btn" title="Toggle pixel dark/light mode" aria-label="Toggle theme">
         <span class="ico">PX</span>
@@ -106,8 +113,107 @@
     <main id="main" role="main">
       <!-- Bloch pane -->
       <section id="blochPane" class="pane" aria-label="Bloch pane">
+        <section id="beginnerPanel" class="beginner-panel" aria-label="Beginner panel">
+          <div class="beginner-header">
+            <div>
+              <div class="beginner-title">First Qubit</div>
+              <div class="beginner-sub">Watch how behavior changes before learning symbols.</div>
+            </div>
+            <div class="beginner-actions">
+              <button id="beginnerShowBloch" class="micro-btn" type="button">Show Bloch</button>
+              <button id="beginnerShowTimeline" class="micro-btn" type="button">Show Timeline</button>
+            </div>
+          </div>
+
+          <div class="beginner-grid">
+            <div class="beginner-card state-card">
+              <div class="card-title">State Now</div>
+              <div id="beginnerStateText" class="card-body">If you measure now, 0 happens 100% of the time.</div>
+              <div id="beginnerDelta" class="card-note">No changes yet.</div>
+              <div id="beginnerEntangledNote" class="card-note hidden">This qubit is entangled. It cannot be described alone.</div>
+            </div>
+
+            <div class="beginner-card action-card">
+              <div class="card-title">Try An Action</div>
+              <div class="beginner-action-grid">
+                <button id="beginnerActionUndecided" class="micro-btn" type="button">Make It Undecided</button>
+                <button id="beginnerActionFlip" class="micro-btn" type="button">Flip It</button>
+                <button id="beginnerActionTwist" class="micro-btn" type="button">Add A Twist</button>
+                <button id="beginnerActionMeasure" class="micro-btn danger" type="button">Measure Now</button>
+                <button id="beginnerActionReset" class="micro-btn" type="button">Reset</button>
+              </div>
+            </div>
+
+            <div class="beginner-card" id="probabilityPanel">
+              <div class="card-title">Probabilities</div>
+              <div id="probHistogramBeginner" class="mini-histogram" aria-label="Probability histogram"></div>
+              <div id="probNoteBeginner" class="popover-note">Probabilities show what a measurement would produce.</div>
+            </div>
+
+            <div class="beginner-card hidden" id="jointProbPanel">
+              <div class="card-title">Joint Probabilities</div>
+              <div id="jointProbGrid" class="joint-prob-grid"></div>
+              <div id="jointProbNote" class="popover-note">When entangled, only the pair is fully knowable.</div>
+              <div id="jointProbCondition" class="card-note"></div>
+            </div>
+
+            <div class="beginner-card" id="interferencePanel">
+              <div class="card-title">Interference View</div>
+              <div id="interferenceGrid" class="interference-grid"></div>
+              <div class="popover-note">Phase twists change how possibilities combine.</div>
+            </div>
+
+            <div class="beginner-card">
+              <div class="card-title">Timeline</div>
+              <div class="timeline-row">
+                <input id="beginnerTimeline" type="range" min="0" max="12" step="1" value="0" />
+                <div id="beginnerTimelineLabel" class="timeline-label">Start</div>
+              </div>
+              <div class="timeline-note">Drag to scrub the story of changes. Noise overlay is visual-only.</div>
+            </div>
+
+            <div class="beginner-card">
+              <div class="card-title">Presets</div>
+              <div class="preset-grid">
+                <button class="micro-btn" data-preset="superposition" type="button">Superposition</button>
+                <button class="micro-btn" data-preset="interference" type="button">Interference</button>
+                <button class="micro-btn" data-preset="bell" type="button">Bell Pair</button>
+                <button class="micro-btn" data-preset="collapse" type="button">Measurement Collapse</button>
+              </div>
+              <div class="timeline-note">Each preset auto-builds a short story.</div>
+            </div>
+
+            <div class="beginner-card">
+              <div class="card-title">Measurement Seed</div>
+              <div class="seed-row">
+                <input id="beginnerSeed" type="number" inputmode="numeric" placeholder="Seed" />
+                <button id="beginnerSeedApply" class="micro-btn" type="button">Set</button>
+                <button id="beginnerSeedReroll" class="micro-btn" type="button">Reroll</button>
+              </div>
+              <div class="timeline-note">Same seed = same random outcomes.</div>
+            </div>
+          </div>
+        </section>
+
         <div id="blochCanvas" aria-label="Bloch canvas region">
           <div id="bloch-grid"></div>
+          <div id="blochRevealOverlay" class="bloch-reveal">Probabilities first. Scrub the timeline to reveal the Bloch view.</div>
+          <div id="quietHud" aria-hidden="true">
+            <button id="quietPrompt" type="button">change state</button>
+            <div id="quietActionWheel" role="menu" aria-label="Qubit actions">
+              <button class="quiet-action" type="button" data-action="undecided" data-desc="<strong>Make it undecided.</strong><br>Turns a definite answer into a balanced mix of 0 and 1.<br>\(H\lvert 0 \rangle = \tfrac{\lvert 0 \rangle + \lvert 1 \rangle}{\sqrt{2}}\)<br>This is the gateway to everything quantum: interference, entanglement, and weirdness.">make undecided</button>
+              <button class="quiet-action" type="button" data-action="flip" data-desc="<strong>Flip the answer.</strong><br>Turns a definite 0 into 1, and 1 into 0.<br>\(X\lvert 0 \rangle = \lvert 1 \rangle\)<br>If the qubit was undecided, it swaps the chances instead of choosing.">flip</button>
+              <button class="quiet-action" type="button" data-action="measure" data-desc="<strong>Measure.</strong><br>Collapse to a single outcome right now.">measure</button>
+              <button class="quiet-action" type="button" data-action="detail" data-desc="<strong>Show circuit.</strong><br>Reveal the circuit timeline.">show circuit</button>
+            </div>
+            <div id="quietTooltip" aria-hidden="true"></div>
+            <div id="quietStateLine" aria-live="polite"></div>
+            <div id="quietSecondaryLine" aria-live="polite">
+              <span id="quietSecondaryText"></span>
+              <span id="quietSecondaryValue" class="quiet-value"></span>
+            </div>
+            <button id="quietHideCircuit" type="button">hide circuit</button>
+          </div>
           <div id="entanglementBadge">State stored in correlations</div>
           <div id="correlationsPanel" class="micro-panel" aria-label="Correlations panel">
             <div class="micro-row">

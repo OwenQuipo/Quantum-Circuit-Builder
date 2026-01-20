@@ -311,6 +311,7 @@ body.show-matrix #matrixBlock{ display: block; }
   border: 2px solid var(--line-strong);
 }
 body.prob-open #probPopover{ display: block; }
+body.beginner-mode #probPopover{ display: none; }
 
 .mini-histogram{
   display: grid;

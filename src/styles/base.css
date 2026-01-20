@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Fraunces:wght@300;400;500&display=swap");
 
 /* =========================
    Pixel palette + tokens
@@ -78,10 +78,10 @@ html, body{
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
-  font-family: "Press Start 2P", "Courier New", monospace;
-  letter-spacing: 0.03em;
-  font-size: 11px;
-  text-transform: uppercase;
+  font-family: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: 0.01em;
+  font-size: 14px;
+  text-transform: none;
 }
 
 #qubit-visualizer{
@@ -126,6 +126,149 @@ html, body{
   grid-template-columns: minmax(340px, var(--splitLeft)) var(--splitW) minmax(420px, 1fr);
   min-height: 0;
   gap: 0;
+}
+
+/* =========================
+   Beginner mode layout
+   ========================= */
+body.beginner-mode #main{
+  grid-template-columns: 1fr;
+}
+body.beginner-mode #primarySplitter,
+body.beginner-mode #circuitPane{
+  display: none;
+}
+body.beginner-mode.beginner-show-timeline #primarySplitter,
+body.beginner-mode.beginner-show-timeline #circuitPane{
+  display: block;
+}
+body.beginner-mode.beginner-show-timeline #main{
+  grid-template-columns: minmax(340px, var(--splitLeft)) var(--splitW) minmax(420px, 1fr);
+}
+body.beginner-mode #gateLibrary{
+  display: none;
+}
+body.beginner-mode #qubit-visualizer{
+  background-image: none;
+}
+
+/* =========================
+   Quiet mode layout
+   ========================= */
+body.quiet-mode{
+  --bg: #efeee8;
+  --surface: transparent;
+  --surface2: transparent;
+  --text: #1e1d1a;
+  --muted: #6f6a63;
+  --line: transparent;
+  --line-strong: transparent;
+  --shadow: transparent;
+  --glow: #00000012;
+  letter-spacing: 0.015em;
+}
+body.quiet-mode #qubit-visualizer{
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 1fr;
+  padding: 0;
+  gap: 0;
+  background-image: none;
+}
+body.quiet-mode #topbar,
+body.quiet-mode #primarySplitter,
+body.quiet-mode #backendDrawer,
+body.quiet-mode #probPopover,
+body.quiet-mode #overlayBackdrop,
+body.quiet-mode #settingsPanel,
+body.quiet-mode #beginnerPanel,
+body.quiet-mode #blochRevealOverlay,
+body.quiet-mode #blochOverlay,
+body.quiet-mode #correlationsPanel,
+body.quiet-mode #entanglementBadge{
+  display: none !important;
+}
+body.quiet-mode #gateLibrary,
+body.quiet-mode #primarySplitter,
+body.quiet-mode #circuitPane{
+  display: none !important;
+}
+body.quiet-mode #main{
+  grid-template-columns: 1fr;
+  min-height: 100%;
+}
+body.quiet-mode.quiet-show-circuit #main{
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  align-content: stretch;
+  position: relative;
+}
+body.quiet-mode .pane{
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+body.quiet-mode #blochPane{
+  display: flex;
+}
+body.quiet-mode #blochCanvas{
+  padding: 0;
+  overflow: hidden;
+  background-image: none;
+  display: grid;
+  place-items: center;
+}
+body.quiet-mode #blochPane{
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+}
+body.quiet-mode.quiet-show-circuit #blochPane{
+  grid-template-rows: 1fr;
+}
+body.quiet-mode #bloch-grid{
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  opacity: 1 !important;
+  filter: none !important;
+  pointer-events: auto;
+}
+body.quiet-mode .bloch-tile{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+body.quiet-mode .bloch-tile{
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  min-height: auto;
+}
+body.quiet-mode .bloch-tile-header,
+body.quiet-mode .purity-chip,
+body.quiet-mode .measurement-badge,
+body.quiet-mode .state-chip{
+  display: none !important;
+}
+body.quiet-mode .tile-canvas{
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  width: clamp(220px, 62vmin, 460px);
+  height: clamp(220px, 62vmin, 460px);
+  aspect-ratio: 1 / 1;
+}
+body.quiet-mode .tile-canvas canvas{
+  background: transparent;
+  pointer-events: auto;
+  touch-action: auto;
 }
 
 .pane{

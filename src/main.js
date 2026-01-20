@@ -68,10 +68,15 @@ const CX_REVERSED = mat4Mul(mat4Mul(SWAP4, CX4), SWAP4);
 
 // -------------------- App state --------------------
 const MAX_QUBITS = 10;
-let qubitCount = 2;
+let qubitCount = 1;
 let selectedQubit = 0;
 let widgets = [];
 let initialStates = [];
+const BEGINNER_MODE_KEY = "beginnerMode";
+const BEGINNER_TIMELINE_KEY = "beginnerTimelineVisible";
+const BEGINNER_BLOCH_KEY = "beginnerBlochVisible";
+const MEASUREMENT_SEED_KEY = "measurementSeed";
+const QUIET_MODE = true;
 
 const INIT_STATE_MAP = {
   "0": { alpha: c(1, 0), beta: c(0, 0), label: "|0\\rangle" },
@@ -113,6 +118,16 @@ const TIP_MAP = {
   closeBackendDrawer: "✕ Close drawer",
   openProbBtn: "📊 Show probabilities",
   openMathBtn: "📐 Open math drawer",
+  beginnerToggle: "Toggle beginner mode",
+  beginnerShowBloch: "Reveal the Bloch sphere view",
+  beginnerShowTimeline: "Reveal the timeline view",
+  beginnerActionUndecided: "Make the qubit undecided (Hadamard)",
+  beginnerActionFlip: "Flip the qubit (X)",
+  beginnerActionTwist: "Add a phase twist (Z)",
+  beginnerActionMeasure: "Measure now (collapse)",
+  beginnerActionReset: "Reset the beginner story",
+  beginnerSeedApply: "Set measurement seed",
+  beginnerSeedReroll: "Reroll measurement seed",
 };
 let latestGlobalRho = null;
 let measurementOverrideRho = null;
@@ -143,6 +158,18 @@ let dragRoleBadgeEl = null;
 const PURITY_EPS = 1e-6;
 const THEME_KEY = "pixelMode";
 let themeMode = "dark";
+let beginnerMode = true;
+let beginnerShowTimeline = false;
+let beginnerShowBloch = false;
+let beginnerHasScrubbed = false;
+let beginnerHasSeenProbChange = false;
+let measurementSeed = null;
+let manualMeasureCounter = 0;
+let quietDetailTimer = null;
+let quietMeasureTimer = null;
+let quietWheelOpen = false;
+let quietDetailVisible = false;
+let quietShowCircuit = false;
 
 function loadThemePreference() {
   try {
@@ -171,6 +198,113 @@ function applyTheme(mode) {
 
 function toggleThemeMode() {
   applyTheme(themeMode === "dark" ? "light" : "dark");
+}
+
+function loadBeginnerPreference() {
+  try {
+    const saved = localStorage.getItem(BEGINNER_MODE_KEY);
+    if (saved === "0") return false;
+    if (saved === "1") return true;
+  } catch {}
+  return true;
+}
+
+function loadBeginnerToggleState(key, fallback = false) {
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved === "1") return true;
+    if (saved === "0") return false;
+  } catch {}
+  return fallback;
+}
+
+function updateBeginnerToggleUI() {
+  const label = $("beginnerToggleLabel");
+  if (label) label.textContent = beginnerMode ? "Beginner" : "Advanced";
+}
+
+function setBeginnerTimelineVisible(on) {
+  beginnerShowTimeline = !!on;
+  document.body.classList.toggle("beginner-show-timeline", beginnerShowTimeline);
+  const btn = $("beginnerShowTimeline");
+  if (btn) btn.textContent = beginnerShowTimeline ? "Hide Timeline" : "Show Timeline";
+  try { localStorage.setItem(BEGINNER_TIMELINE_KEY, beginnerShowTimeline ? "1" : "0"); } catch {}
+  requestAnimationFrame(() => {
+    resizeAllWidgets();
+    noiseOverlay?.resize?.();
+  });
+}
+
+function setBeginnerBlochVisible(on) {
+  beginnerShowBloch = !!on;
+  document.body.classList.toggle("beginner-show-bloch", beginnerShowBloch);
+  const btn = $("beginnerShowBloch");
+  if (btn) btn.textContent = beginnerShowBloch ? "Hide Bloch" : "Show Bloch";
+  try { localStorage.setItem(BEGINNER_BLOCH_KEY, beginnerShowBloch ? "1" : "0"); } catch {}
+  requestAnimationFrame(() => resizeAllWidgets());
+}
+
+function applyBeginnerMode(on) {
+  beginnerMode = QUIET_MODE ? true : !!on;
+  document.body.classList.toggle("beginner-mode", beginnerMode);
+  updateBeginnerToggleUI();
+  if (beginnerMode) {
+    beginnerHasScrubbed = false;
+    beginnerHasSeenProbChange = false;
+    setBeginnerTimelineVisible(beginnerShowTimeline);
+    setBeginnerBlochVisible(beginnerShowBloch);
+  }
+  updateBeginnerPanels();
+  try { localStorage.setItem(BEGINNER_MODE_KEY, beginnerMode ? "1" : "0"); } catch {}
+}
+
+function toggleBeginnerMode() {
+  applyBeginnerMode(!beginnerMode);
+}
+
+function loadMeasurementSeed() {
+  try {
+    const saved = localStorage.getItem(MEASUREMENT_SEED_KEY);
+    if (saved == null || saved === "") return null;
+    const n = Number(saved);
+    return Number.isFinite(n) ? n : null;
+  } catch {}
+  return null;
+}
+
+function setMeasurementSeed(seed) {
+  const next = Number(seed);
+  measurementSeed = Number.isFinite(next) ? Math.trunc(next) : null;
+  manualMeasureCounter = 0;
+  clearMeasurementOutcomesFrom(0);
+  measurementOverrideRho = null;
+  if (measurementSeed == null) {
+    try { localStorage.removeItem(MEASUREMENT_SEED_KEY); } catch {}
+  } else {
+    try { localStorage.setItem(MEASUREMENT_SEED_KEY, String(measurementSeed)); } catch {}
+  }
+  rebuildToStep(activeStep);
+}
+
+function rerollMeasurementSeed() {
+  const next = Math.floor(Date.now() % 1e9);
+  setMeasurementSeed(next);
+}
+
+function seededRandom(seed) {
+  let t = seed + 0x6d2b79f5;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+function measurementRandom(step, qubit, salt = 0) {
+  if (!Number.isFinite(measurementSeed)) return Math.random();
+  const base = measurementSeed >>> 0;
+  const mix = (step + 2) * 0x9e3779b9;
+  const mix2 = (qubit + 3) * 0x85ebca6b;
+  const mix3 = (salt + 5) * 0xc2b2ae35;
+  return seededRandom((base ^ mix ^ mix2 ^ mix3) >>> 0);
 }
 
 // -------------------- Bloch layout --------------------
@@ -231,6 +365,7 @@ function rebuildBlochGrid() {
       refreshSelectedUI();
       updateProbPopover();
       updateBackendMath();
+      updateBeginnerPanels();
     });
 
     grid.appendChild(tile);
@@ -255,6 +390,8 @@ function rebuildBlochGrid() {
       bellTagEl: bellPill,
     });
   }
+
+  if (QUIET_MODE) setQuietDetailVisible(quietDetailVisible);
 
   refreshSelectedUI();
   ensureEntanglementVisuals();
@@ -722,16 +859,94 @@ function gateTooltip(g) {
 
 function gateDescription(g) {
   const descriptions = {
-    H: "Hadamard creates ± superposition.",
-    X: "Pauli-X flips |0>↔|1>.",
-    Y: "Pauli-Y flips with i phase.",
-    Z: "Pauli-Z adds a π phase to |1>.",
-    S: "S gate: Z-rotation by π/2.",
-    T: "T gate: Z-rotation by π/4.",
     CX: "Controlled-X (CNOT) flips target if control=1.",
     M: "Measurement glyph used for visualization.",
   };
   return descriptions[g] || "";
+}
+
+function gateHoverContent(gateName) {
+  const narratives = {
+    X: {
+      title: "X gate (bit flip)",
+      lines: [
+        "\"Flip the answer.\"",
+        "Turns a definite 0 into 1, and 1 into 0.",
+        "If the qubit was undecided, it swaps the chances instead of choosing.",
+      ],
+      matrix: "\\\\begin{bmatrix}0 & 1\\\\\\n1 & 0\\\\end{bmatrix}",
+      dirac: "X\\\\lvert 0 \\\\rangle = \\\\lvert 1 \\\\rangle",
+      mult: "\\\\begin{bmatrix}0 & 1\\\\\\n1 & 0\\\\end{bmatrix}\\\\begin{bmatrix}1\\\\\\\\0\\\\end{bmatrix}=\\\\begin{bmatrix}0\\\\\\\\1\\\\end{bmatrix}",
+    },
+    Y: {
+      title: "Y gate",
+      lines: [
+        "\"Flip + twist.\"",
+        "Like X, but it also adds a hidden twist that affects future interference.",
+        "You will not see the difference immediately, but it changes what happens next.",
+      ],
+      matrix: "\\\\begin{bmatrix}0 & -i\\\\\\ni & 0\\\\end{bmatrix}",
+      dirac: "Y\\\\lvert 0 \\\\rangle = i\\\\lvert 1 \\\\rangle",
+      mult: "\\\\begin{bmatrix}0 & -i\\\\\\ni & 0\\\\end{bmatrix}\\\\begin{bmatrix}1\\\\\\\\0\\\\end{bmatrix}=\\\\begin{bmatrix}0\\\\\\\\i\\\\end{bmatrix}",
+    },
+    Z: {
+      title: "Z gate (phase flip)",
+      lines: [
+        "\"Change the attitude, not the outcome.\"",
+        "Does nothing to the probabilities you see right now, but changes how the qubit interferes later.",
+        "This gate matters only when superposition is involved.",
+      ],
+      matrix: "\\\\begin{bmatrix}1 & 0\\\\\\n0 & -1\\\\end{bmatrix}",
+      dirac: "Z\\\\lvert 0 \\\\rangle = \\\\lvert 0 \\\\rangle",
+      mult: "\\\\begin{bmatrix}1 & 0\\\\\\n0 & -1\\\\end{bmatrix}\\\\begin{bmatrix}1\\\\\\\\0\\\\end{bmatrix}=\\\\begin{bmatrix}1\\\\\\\\0\\\\end{bmatrix}",
+    },
+    H: {
+      title: "H gate (Hadamard)",
+      lines: [
+        "\"Make it undecided.\"",
+        "Turns a definite answer into a balanced mix of 0 and 1.",
+        "This is the gateway to everything quantum: interference, entanglement, and weirdness.",
+      ],
+      matrix: "\\\\frac{1}{\\\\sqrt{2}}\\\\begin{bmatrix}1 & 1\\\\\\n1 & -1\\\\end{bmatrix}",
+      dirac: "H\\\\lvert 0 \\\\rangle = \\\\frac{\\\\lvert 0 \\\\rangle + \\\\lvert 1 \\\\rangle}{\\\\sqrt{2}}",
+      mult: "\\\\frac{1}{\\\\sqrt{2}}\\\\begin{bmatrix}1 & 1\\\\\\n1 & -1\\\\end{bmatrix}\\\\begin{bmatrix}1\\\\\\\\0\\\\end{bmatrix}=\\\\frac{1}{\\\\sqrt{2}}\\\\begin{bmatrix}1\\\\\\\\1\\\\end{bmatrix}",
+    },
+    S: {
+      title: "S gate",
+      lines: [
+        "\"Quarter twist.\"",
+        "Adds a subtle phase shift.",
+        "On its own it feels invisible, but it reshapes interference patterns downstream.",
+      ],
+      matrix: "\\\\begin{bmatrix}1 & 0\\\\\\n0 & i\\\\end{bmatrix}",
+      dirac: "S\\\\lvert 0 \\\\rangle = \\\\lvert 0 \\\\rangle",
+      mult: "\\\\begin{bmatrix}1 & 0\\\\\\n0 & i\\\\end{bmatrix}\\\\begin{bmatrix}1\\\\\\\\0\\\\end{bmatrix}=\\\\begin{bmatrix}1\\\\\\\\0\\\\end{bmatrix}",
+    },
+    T: {
+      title: "T gate",
+      lines: [
+        "\"Eighth twist.\"",
+        "An even finer phase adjustment.",
+        "Important because it lets you reach behaviors Clifford gates alone cannot.",
+      ],
+      matrix: "\\\\begin{bmatrix}1 & 0\\\\\\n0 & e^{i\\\\pi/4}\\\\end{bmatrix}",
+      dirac: "T\\\\lvert 0 \\\\rangle = \\\\lvert 0 \\\\rangle",
+      mult: "\\\\begin{bmatrix}1 & 0\\\\\\n0 & e^{i\\\\pi/4}\\\\end{bmatrix}\\\\begin{bmatrix}1\\\\\\\\0\\\\end{bmatrix}=\\\\begin{bmatrix}1\\\\\\\\0\\\\end{bmatrix}",
+    },
+  };
+
+  const narrative = narratives[gateName];
+  if (!narrative) return null;
+  const descLines = narrative.lines.map((line) => `<div>${line}</div>`).join("");
+  return `
+    <div class="gate-desc">
+      <div><strong>${narrative.title}</strong></div>
+      ${descLines}
+    </div>
+    \\\\[${narrative.matrix}\\\\]
+    \\\\[${narrative.dirac}\\\\]
+    \\\\[${narrative.mult}\\\\]
+  `;
 }
 
 function clearAt(q, s) {
@@ -1076,7 +1291,7 @@ function computeBlochTraces(stepIdx) {
             const total = Math.max(0, probs.p0 + probs.p1) || 1;
             let outcome = measurementOutcomes?.[s]?.[q];
             if (outcome == null) {
-              const r = Math.random();
+              const r = measurementRandom(s, q, 0);
               outcome = (r < probs.p0 / total) ? 0 : 1;
               if (measurementOutcomes[s]) measurementOutcomes[s][q] = outcome;
             }
@@ -1147,6 +1362,7 @@ function updateGateHoverMath(gateName) {
     return;
   }
 
+  const rich = gateHoverContent(gateName);
   const desc = gateDescription(gateName);
 
   if (gateName === "M") {
@@ -1162,7 +1378,11 @@ function updateGateHoverMath(gateName) {
     return;
   }
 
-  el.innerHTML = `<div class="gate-desc">${desc}</div>${gateMatrixLatex(gateName)}`;
+  if (rich) {
+    el.innerHTML = rich;
+  } else {
+    el.innerHTML = `<div class="gate-desc">${desc}</div>${gateMatrixLatex(gateName)}`;
+  }
   if (typeof MathJax !== "undefined") MathJax.typesetPromise([el]);
 }
 
@@ -1296,6 +1516,7 @@ function updateActiveStepUI() {
   });
 
   updateBackendMath();
+  updateBeginnerTimelineUI();
 }
 
 function rotateVectorAroundAxis(vec, axis, angle) {
@@ -1371,6 +1592,7 @@ function rebuildToStep(stepIdx) {
   updateBackendMath();
   updateCorrelationsPanel();
   updateGlobalStateBadges(entangledPairs);
+  updateBeginnerPanels();
 
   // cue the most recent measurement events (if any) to emphasize collapse
   measuredEvents?.forEach(({ qubit, outcome, step }) => {
@@ -1451,6 +1673,11 @@ async function stepBack() {
   const animPromise = rebuildToStep(activeStep);
   if (animPromise?.then) await animPromise;
 
+  if (beginnerMode) {
+    beginnerHasScrubbed = true;
+    maybeRevealBloch();
+  }
+
   stepBusy = false;
 }
 
@@ -1477,6 +1704,11 @@ async function stepForward() {
   const animPromise = rebuildToStep(activeStep);
   if (animPromise?.then) await animPromise;
 
+  if (beginnerMode) {
+    beginnerHasScrubbed = true;
+    maybeRevealBloch();
+  }
+
   stepBusy = false;
 }
 
@@ -1487,6 +1719,11 @@ function resetStepCursor() {
   updateActiveStepUI();
   rebuildToStep(activeStep);
   noiseOverlay?.reset?.();
+  if (beginnerMode) {
+    beginnerHasScrubbed = false;
+    beginnerHasSeenProbChange = false;
+    setBeginnerBlochVisible(false);
+  }
 }
 
 // -------------------- Circuit render (existing) --------------------
@@ -1857,6 +2094,89 @@ function clearCircuit() {
   noiseOverlay?.reset?.();
 }
 
+function setActiveStepDirect(step) {
+  stopPlayback();
+  const prev = activeStep;
+  activeStep = clamp(step, -1, stepCount - 1);
+  if (activeStep < prev) clearMeasurementOutcomesFrom(activeStep + 1);
+  updateActiveStepUI();
+  rebuildToStep(activeStep);
+}
+
+function findNextEmptyStep(q, fromStep) {
+  const start = Math.max(0, fromStep ?? 0);
+  for (let s = start; s < stepCount; s++) {
+    if (singleQ[q]?.[s]) continue;
+    const blockedByCX = (multiQ[s] || []).some((op) => op.type === "CX" && (op.control === q || op.target === q));
+    if (blockedByCX) continue;
+    return s;
+  }
+  return null;
+}
+
+function applyBeginnerGate(gate, q = selectedQubit) {
+  const nextStep = findNextEmptyStep(q, activeStep + 1);
+  if (nextStep == null) {
+    showToast("Timeline full. Clear or add steps.");
+    return;
+  }
+  if (gate === "M") triggerQuietMeasureFlash();
+  placeSingleGate(q, nextStep, gate);
+  renderCircuit();
+  ensureNoiseOverlay();
+  noiseOverlay?.resize?.();
+  if (nextStep === activeStep + 1) {
+    beginnerHasScrubbed = true;
+    stepForward();
+  } else {
+    beginnerHasScrubbed = true;
+    setActiveStepDirect(nextStep);
+  }
+  maybeRevealBloch();
+}
+
+function resetBeginnerState() {
+  beginnerHasScrubbed = false;
+  beginnerHasSeenProbChange = false;
+  selectedQubit = 0;
+  setQubitCount(1);
+  clearCircuit();
+  setBeginnerBlochVisible(false);
+  setBeginnerTimelineVisible(false);
+}
+
+function applyBeginnerPreset(kind) {
+  stopPlayback();
+  beginnerHasScrubbed = false;
+  beginnerHasSeenProbChange = false;
+  if (kind === "bell") {
+    setQubitCount(2);
+  } else {
+    setQubitCount(1);
+  }
+  initCircuitModel();
+  selectedQubit = 0;
+  if (kind === "superposition") {
+    placeSingleGate(0, 0, "H");
+  } else if (kind === "interference") {
+    placeSingleGate(0, 0, "H");
+    placeSingleGate(0, 2, "Z");
+    placeSingleGate(0, 4, "H");
+  } else if (kind === "bell") {
+    placeSingleGate(0, 0, "H");
+    placeCXDirect(2, 0, 1);
+  } else if (kind === "collapse") {
+    placeSingleGate(0, 0, "H");
+    placeSingleGate(0, 2, "M");
+  }
+  renderCircuit();
+  activeStep = -1;
+  updateActiveStepUI();
+  rebuildToStep(activeStep);
+  setBeginnerBlochVisible(false);
+  maybeRevealBloch();
+}
+
 // -------------------- Qubit count (now always accessible from topbar) --------------------
 function setQubitCount(n) {
   qubitCount = Math.max(1, Math.min(MAX_QUBITS, n));
@@ -2049,7 +2369,8 @@ function initGateLibraryDrag() {
 // -------------------- Bloch overlay controls --------------------
 function setTrajectoryVisible(on) {
   widgets.forEach(({ widget }) => {
-    if (widget?.traceLine) widget.traceLine.visible = !!on;
+    if (!widget?.traceLine) return;
+    widget.traceLine.visible = !!on;
   });
 }
 
@@ -2177,30 +2498,401 @@ function refreshMeasurementClasses() {
   });
 }
 
-function updateProbPopover() {
-  const host = $("probHistogram");
+function renderProbHistogram(host, p0, p1, useLatex = true) {
   if (!host) return;
+  const label0 = useLatex ? "|0⟩" : "0";
+  const label1 = useLatex ? "|1⟩" : "1";
+  const p0Txt = useLatex ? `\\(\\Pr(|0\\rangle) = ${formatProbabilityLatex(p0)}\\)` : `Probability of 0: ${formatPercent(p0)}`;
+  const p1Txt = useLatex ? `\\(\\Pr(|1\\rangle) = ${formatProbabilityLatex(p1)}\\)` : `Probability of 1: ${formatPercent(p1)}`;
+  host.innerHTML = `
+    <div class="bar prob-row">
+      <div class="prob-state">${label0}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0, Math.min(1, p0)) * 100}%"></div></div>
+      <div class="prob-math">${p0Txt}</div>
+    </div>
+    <div class="bar prob-row">
+      <div class="prob-state">${label1}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0, Math.min(1, p1)) * 100}%"></div></div>
+      <div class="prob-math">${p1Txt}</div>
+    </div>
+  `;
+}
 
+function updateProbPopover() {
   const w = widgets[selectedQubit]?.widget;
   if (!w) return;
 
   const rho = densityFromState(w.state);
   const { p0, p1 } = probsFromRho(rho);
 
-  host.innerHTML = `
-    <div class="bar prob-row">
-      <div class="prob-state">|0⟩</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0, Math.min(1, p0)) * 100}%"></div></div>
-      <div class="prob-math">\\(\\Pr(|0\\rangle) = ${formatProbabilityLatex(p0)}\\)</div>
-    </div>
-    <div class="bar prob-row">
-      <div class="prob-state">|1⟩</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0, Math.min(1, p1)) * 100}%"></div></div>
-      <div class="prob-math">\\(\\Pr(|1\\rangle) = ${formatProbabilityLatex(p1)}\\)</div>
-    </div>
-  `;
+  renderProbHistogram($("probHistogram"), p0, p1, true);
+  renderProbHistogram($("probHistogramBeginner"), p0, p1, false);
 
-  if (typeof MathJax !== "undefined") MathJax.typesetPromise([host]);
+  if (beginnerMode) {
+    if (Math.abs(p0 - 1) > 1e-3 || Math.abs(p1) > 1e-3) {
+      beginnerHasSeenProbChange = true;
+      maybeRevealBloch();
+    }
+  }
+
+  const targets = [$("probHistogram"), $("probHistogramBeginner")].filter(Boolean);
+  if (typeof MathJax !== "undefined" && targets.length) MathJax.typesetPromise(targets);
+}
+
+function updateBeginnerTimelineUI() {
+  const slider = $("beginnerTimeline");
+  const label = $("beginnerTimelineLabel");
+  if (!slider) return;
+  slider.max = String(stepCount);
+  slider.value = String(activeStep + 1);
+  if (label) {
+    label.textContent = activeStep < 0 ? "Start" : `Step ${activeStep}`;
+  }
+}
+
+function maybeRevealBloch() {
+  if (!beginnerMode) return;
+  if (!beginnerShowBloch && beginnerHasScrubbed && beginnerHasSeenProbChange) {
+    setBeginnerBlochVisible(true);
+  }
+}
+
+function formatPercent(p) {
+  const pct = Math.round(Math.max(0, Math.min(1, p)) * 100);
+  return `${pct}%`;
+}
+
+function gateToBeginnerLabel(gate) {
+  const map = {
+    H: "Make it undecided",
+    X: "Flip it",
+    Z: "Add a twist",
+    S: "Add a twist",
+    M: "Measure",
+  };
+  return map[gate] || null;
+}
+
+function setQuietDetailVisible(on) {
+  if (!QUIET_MODE) return;
+  quietDetailVisible = !!on;
+  document.body.classList.toggle("quiet-show-bloch", quietDetailVisible);
+  widgets.forEach(({ widget }) => widget?.setDetailVisibility?.(quietDetailVisible));
+}
+
+function triggerQuietMeasureFlash() {
+  if (!QUIET_MODE) return;
+  document.body.classList.add("quiet-measure");
+  if (quietMeasureTimer) clearTimeout(quietMeasureTimer);
+  quietMeasureTimer = setTimeout(() => {
+    document.body.classList.remove("quiet-measure");
+  }, 700);
+}
+
+function setQuietCircuitVisible(on) {
+  if (!QUIET_MODE) return;
+  quietShowCircuit = !!on;
+  document.body.classList.toggle("quiet-show-circuit", quietShowCircuit);
+  const btn = document.querySelector('.quiet-action[data-action="detail"]');
+  if (btn) btn.textContent = quietShowCircuit ? "hide circuit" : "show circuit";
+  if (quietShowCircuit) {
+    clearCircuit();
+    try { localStorage.removeItem(GATELIB_POS_KEY); } catch {}
+    const gateLib = $("gateLibrary");
+    if (gateLib) {
+      gateLib.style.setProperty("left", "clamp(18px, 6vw, 64px)", "important");
+      gateLib.style.setProperty("right", "auto", "important");
+      gateLib.style.setProperty("top", "50%", "important");
+      gateLib.style.setProperty("bottom", "auto", "important");
+      gateLib.style.setProperty("transform", "translateY(-50%)", "important");
+    }
+    const circuitPaneEl = $("circuitPane");
+    const circuitCanvasEl = $("circuitCanvas");
+    const circuitGridEl = $("circuit-grid");
+    [circuitPaneEl, circuitCanvasEl, circuitGridEl].forEach((el) => {
+      if (!el) return;
+      el.style.setProperty("background", "transparent", "important");
+      el.style.setProperty("background-image", "none", "important");
+      el.style.setProperty("border", "none", "important");
+      el.style.setProperty("box-shadow", "none", "important");
+      el.style.setProperty("border-radius", "0", "important");
+    });
+    const pane = $("circuitPane");
+    if (pane) {
+      pane.setAttribute("tabindex", "0");
+      pane.focus({ preventScroll: true });
+    }
+  }
+}
+
+function ensureCircuitKeyNav() {
+  const pane = $("circuitPane");
+  if (!pane || pane.dataset.keyNav === "1") return;
+  pane.dataset.keyNav = "1";
+  pane.setAttribute("tabindex", "0");
+  pane.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") { e.preventDefault(); stepBack(); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); stepForward(); }
+  });
+}
+
+function updateJointProbPanel(entry) {
+  const grid = $("jointProbGrid");
+  const cond = $("jointProbCondition");
+  if (!grid || !entry?.pair?.rho) return;
+  const rho = entry.pair.rho;
+  const p00 = Math.max(0, rho[0][0].re);
+  const p01 = Math.max(0, rho[1][1].re);
+  const p10 = Math.max(0, rho[2][2].re);
+  const p11 = Math.max(0, rho[3][3].re);
+  grid.innerHTML = `
+    <div class="joint-prob-cell"><div class="prob-label">00</div><div class="prob-value">${formatPercent(p00)}</div></div>
+    <div class="joint-prob-cell"><div class="prob-label">01</div><div class="prob-value">${formatPercent(p01)}</div></div>
+    <div class="joint-prob-cell"><div class="prob-label">10</div><div class="prob-value">${formatPercent(p10)}</div></div>
+    <div class="joint-prob-cell"><div class="prob-label">11</div><div class="prob-value">${formatPercent(p11)}</div></div>
+  `;
+  if (cond) {
+    const [qa, qb] = entry.pair.qubits;
+    const pA0 = p00 + p01;
+    const pA1 = p10 + p11;
+    const bIfA0 = pA0 > 0 ? p01 / pA0 : 0;
+    const bIfA1 = pA1 > 0 ? p11 / pA1 : 0;
+    cond.textContent = `If q${qa}=0, q${qb}=1 with ${formatPercent(bIfA0)}. If q${qa}=1, q${qb}=1 with ${formatPercent(bIfA1)}.`;
+  }
+}
+
+function updateInterferencePanel() {
+  const grid = $("interferenceGrid");
+  if (!grid) return;
+  if (!Array.isArray(latestStateVector) || latestStateVector.length === 0) {
+    grid.innerHTML = `<div class="card-note">No amplitudes available yet.</div>`;
+    return;
+  }
+  if (qubitCount > 2) {
+    grid.innerHTML = `<div class="card-note">Interference view is available for 1-2 qubits.</div>`;
+    return;
+  }
+
+  const labels = qubitCount === 1 ? ["0", "1"] : ["00", "01", "10", "11"];
+  const cells = labels.map((label, idx) => {
+    const amp = latestStateVector[idx] || { re: 0, im: 0 };
+    const mag = Math.min(1, Math.sqrt(cAbs2(amp)));
+    const phase = Math.atan2(amp.im, amp.re);
+    const deg = ((phase * 180) / Math.PI + 360) % 360;
+    return `
+      <div class="interference-cell">
+        <div class="prob-label">${label}</div>
+        <div class="interference-bar"><div class="interference-fill" style="width:${mag * 100}%"></div></div>
+        <div class="interference-meta">
+          <div class="phase-arrow" style="transform: rotate(${deg}deg)"></div>
+          <div class="phase-text">${Math.round(deg)} deg</div>
+        </div>
+      </div>
+    `;
+  });
+  grid.innerHTML = cells.join("");
+}
+
+function updateBeginnerPanels() {
+  const stateEl = $("beginnerStateText");
+  const deltaEl = $("beginnerDelta");
+  if (!stateEl || !deltaEl) return;
+
+  const w = widgets[selectedQubit]?.widget;
+  if (!w) return;
+
+  const rho = densityFromState(w.state);
+  const { p0, p1 } = probsFromRho(rho);
+  const purityNow = trace2MatSquared(rho);
+  const entEntry = entangledPairForQubit(selectedQubit, entangledPairs);
+  const entangled = !!entEntry && isEntangledFromRho(entEntry.pair.rho) && measuredVisualOutcomes[selectedQubit] == null;
+
+  const entNote = $("beginnerEntangledNote");
+  if (entNote) entNote.classList.toggle("hidden", !entangled);
+
+  if (entangled) {
+    const pair = entEntry?.pair?.qubits || [];
+    const other = pair.find((q) => q !== selectedQubit);
+    const tag = other != null ? ` with q${other}` : "";
+    stateEl.textContent = `This qubit is entangled${tag}. Only the pair has well-defined outcomes.`;
+  } else {
+    stateEl.textContent = `If you measure now, 0 happens ${formatPercent(p0)} of the time and 1 happens ${formatPercent(p1)}.`;
+  }
+
+  const quietLine = $("quietStateLine");
+  const quietSecondary = $("quietSecondaryLine");
+  const quietSecondaryText = $("quietSecondaryText");
+  const quietSecondaryValue = $("quietSecondaryValue");
+  if (quietLine) {
+    if (entangled) {
+      quietLine.textContent = "These outcomes are linked.";
+    } else {
+      const outcome = p0 >= p1 ? 0 : 1;
+      const pct = formatPercent(Math.max(p0, p1));
+      quietLine.textContent = `If measured now: ${outcome} (${pct}).`;
+    }
+  }
+  if (quietSecondary && quietSecondaryText && quietSecondaryValue) {
+    const showPurity = !entangled && purityNow < 0.985;
+    quietSecondary.classList.toggle("on", showPurity);
+    if (showPurity) {
+      quietSecondaryText.textContent = "This qubit is no longer fully its own.";
+      const showValue = quietSecondary.classList.contains("reveal");
+      quietSecondaryValue.textContent = showValue ? `(${purityNow.toFixed(2)})` : "";
+    } else {
+      quietSecondaryText.textContent = "";
+      quietSecondaryValue.textContent = "";
+      quietSecondary.classList.remove("reveal");
+    }
+  }
+
+  const probPanel = $("probabilityPanel");
+  const jointPanel = $("jointProbPanel");
+  if (probPanel) probPanel.classList.toggle("hidden", entangled);
+  if (jointPanel) jointPanel.classList.toggle("hidden", !entangled);
+  if (entangled && entEntry) updateJointProbPanel(entEntry);
+
+  if (activeStep < 0) {
+    deltaEl.textContent = "No changes yet.";
+  } else {
+    const prevState = computeStateAtStep(activeStep - 1, selectedQubit);
+    const prevRho = densityFromState(prevState);
+    const prevP0 = Math.max(0, prevRho[0][0].re);
+    const dp0 = p0 - prevP0;
+    const purityPrev = trace2MatSquared(prevRho);
+    const deltaParts = [];
+    if (Math.abs(dp0) > 1e-3) {
+      deltaParts.push(`P(0) ${dp0 >= 0 ? "+" : "-"}${Math.abs(Math.round(dp0 * 100))}%`);
+    }
+    if (Math.abs(purityNow - purityPrev) > 1e-3) {
+      deltaParts.push(`Purity ${purityNow > purityPrev ? "rose" : "fell"} to ${purityNow.toFixed(2)}`);
+    }
+    const prevEnt = activeStep > 0 ? computeBlochTraces(activeStep - 1).entangledPairs : new Map();
+    if ((prevEnt?.size || 0) === 0 && entangledPairs.size > 0) deltaParts.push("Entanglement created");
+    if ((prevEnt?.size || 0) > 0 && entangledPairs.size === 0) deltaParts.push("Entanglement broken");
+    const gate = singleQ[selectedQubit]?.[activeStep];
+    const cx = (multiQ[activeStep] || []).find((op) => op.type === "CX" && (op.control === selectedQubit || op.target === selectedQubit));
+    const label = gateToBeginnerLabel(gate);
+    if (label) deltaParts.unshift(`Action: ${label}`);
+    if (cx) deltaParts.unshift(`Linked with q${cx.control === selectedQubit ? cx.target : cx.control}`);
+    deltaEl.textContent = deltaParts.length ? deltaParts.join(" | ") : "State updated.";
+  }
+
+  updateInterferencePanel();
+  updateBeginnerTimelineUI();
+}
+
+function initQuietModeUI() {
+  if (!QUIET_MODE) return;
+  document.body.classList.add("quiet-mode");
+  const canvas = $("blochCanvas");
+  const pane = $("blochPane");
+  const hud = $("quietHud");
+  const prompt = $("quietPrompt");
+  const wheel = $("quietActionWheel");
+  const tooltip = $("quietTooltip");
+  const secondary = $("quietSecondaryLine");
+  const hideCircuitBtn = $("quietHideCircuit");
+  if (!canvas || !prompt || !wheel) return;
+  if (pane && hud && hud.parentNode !== pane) pane.appendChild(hud);
+  ensureCircuitKeyNav();
+
+  const openWheel = () => {
+    quietWheelOpen = true;
+    document.body.classList.add("quiet-wheel-open");
+  };
+  const closeWheel = () => {
+    quietWheelOpen = false;
+    document.body.classList.remove("quiet-wheel-open");
+  };
+
+  const scheduleDetail = () => {
+    if (quietDetailTimer) clearTimeout(quietDetailTimer);
+    quietDetailTimer = setTimeout(() => setQuietDetailVisible(true), 900);
+  };
+
+  const clearDetail = () => {
+    if (quietDetailTimer) clearTimeout(quietDetailTimer);
+    setQuietDetailVisible(true);
+  };
+
+  canvas.addEventListener("mouseenter", () => {
+    document.body.classList.add("quiet-hover");
+    scheduleDetail();
+  });
+  canvas.addEventListener("mousemove", () => {
+    document.body.classList.add("quiet-hover");
+    clearDetail();
+    scheduleDetail();
+  });
+  canvas.addEventListener("mouseleave", () => {
+    document.body.classList.remove("quiet-hover");
+    closeWheel();
+    clearDetail();
+  });
+
+  prompt.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (quietWheelOpen) closeWheel();
+    else openWheel();
+  });
+
+  wheel.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+    const action = btn.dataset.action;
+    if (action === "undecided") applyBeginnerGate("H");
+    if (action === "flip") applyBeginnerGate("X");
+    if (action === "measure") applyBeginnerGate("M");
+    if (action === "detail") setQuietCircuitVisible(!quietShowCircuit);
+    closeWheel();
+  });
+
+  hideCircuitBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setQuietCircuitVisible(false);
+  });
+
+  wheel.querySelectorAll(".quiet-action").forEach((btn) => {
+    const showTip = () => {
+      if (!tooltip) return;
+      const html = btn.dataset.desc || "";
+      tooltip.innerHTML = html;
+      tooltip.classList.toggle("on", !!html);
+      if (typeof MathJax !== "undefined" && MathJax.typesetPromise) {
+        const ready = MathJax.startup?.promise || Promise.resolve();
+        ready.then(() => {
+          MathJax.typesetClear?.([tooltip]);
+          return MathJax.typesetPromise([tooltip]);
+        });
+      }
+    };
+    const hideTip = () => {
+      if (!tooltip) return;
+      tooltip.classList.remove("on");
+      tooltip.innerHTML = "";
+    };
+    btn.addEventListener("mouseenter", showTip);
+    btn.addEventListener("focus", showTip);
+    btn.addEventListener("mouseleave", hideTip);
+    btn.addEventListener("blur", hideTip);
+  });
+
+  secondary?.addEventListener("click", (e) => {
+    if (!secondary.classList.contains("on")) return;
+    e.stopPropagation();
+    secondary.classList.toggle("reveal");
+    updateBeginnerPanels();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!quietWheelOpen) return;
+    if (wheel.contains(e.target) || prompt.contains(e.target)) return;
+    closeWheel();
+  });
+
+  setQuietDetailVisible(true);
+  setQuietCircuitVisible(false);
 }
 
 // -------------------- Entanglement + correlations --------------------
@@ -2589,7 +3281,7 @@ function measureQubit(idx) {
   if (hasVector) {
     const probs = measureProbabilitiesVector(latestStateVector, idx, qubitCount);
     const total = Math.max(0, probs.p0 + probs.p1) || 1;
-    const r = Math.random();
+    const r = measurementRandom(activeStep, idx, manualMeasureCounter++);
     const outcome = r < probs.p0 / total ? 0 : 1;
     latestStateVector = collapseStateVectorOnMeasurement(latestStateVector, idx, outcome, qubitCount);
 
@@ -2630,6 +3322,7 @@ function measureQubit(idx) {
     updateProbPopover();
     updateBackendMath();
     updateGlobalStateBadges(entangledPairs);
+    updateBeginnerPanels();
     document.body.classList.add("measurement-flash");
     setTimeout(() => document.body.classList.remove("measurement-flash"), 280);
     showToast(`Measured q${idx} = ${outcome}`);
@@ -2644,7 +3337,7 @@ function measureQubit(idx) {
   const localIdx = entEntry.pair.qubits[0] === idx ? 0 : 1;
   const probs = measureProbabilities(rho, localIdx);
   const total = Math.max(0, probs.p0 + probs.p1) || 1;
-  const r = Math.random();
+  const r = measurementRandom(activeStep, idx, manualMeasureCounter++);
   const outcome = r < probs.p0 / total ? 0 : 1;
 
   const { rho: collapsed } = collapseOnOutcome(rho, localIdx, outcome);
@@ -2671,6 +3364,7 @@ function measureQubit(idx) {
   updateProbPopover();
   updateBackendMath();
   updateGlobalStateBadges(entangledPairs);
+  updateBeginnerPanels();
   document.body.classList.add("measurement-flash");
   setTimeout(() => document.body.classList.remove("measurement-flash"), 280);
   showToast(`Measured q${idx} = ${outcome}`);
@@ -2818,12 +3512,21 @@ function onGlobalKeydown(e) {
 
 // -------------------- Boot (UI wiring only) --------------------
 window.addEventListener("load", () => {
-  themeMode = loadThemePreference();
+  themeMode = QUIET_MODE ? "light" : loadThemePreference();
   applyTheme(themeMode);
+  if (QUIET_MODE) document.body.classList.add("quiet-mode");
   applyStoredSplit();
+  beginnerMode = QUIET_MODE ? true : loadBeginnerPreference();
+  beginnerShowTimeline = QUIET_MODE ? false : loadBeginnerToggleState(BEGINNER_TIMELINE_KEY, false);
+  beginnerShowBloch = QUIET_MODE ? false : loadBeginnerToggleState(BEGINNER_BLOCH_KEY, false);
+  measurementSeed = loadMeasurementSeed();
+  applyBeginnerMode(beginnerMode);
+  setBeginnerTimelineVisible(beginnerShowTimeline);
+  setBeginnerBlochVisible(beginnerShowBloch);
+  initQuietModeUI();
 
   initCircuitModel();
-  seedReferenceCircuit();
+  if (!beginnerMode) seedReferenceCircuit();
   rebuildBlochGrid();
   renderCircuit();
   updateActiveStepUI();
@@ -2850,6 +3553,7 @@ window.addEventListener("load", () => {
   $("playPause")?.addEventListener("click", () => togglePlayback());
   $("resetState")?.addEventListener("click", () => resetStepCursor());
   $("themeToggle")?.addEventListener("click", () => toggleThemeMode());
+  $("beginnerToggle")?.addEventListener("click", () => toggleBeginnerMode());
 
   // Qubit controls (topbar)
   $("addQubitTop")?.addEventListener("click", () => addQubit());
@@ -2978,6 +3682,45 @@ window.addEventListener("load", () => {
   $("closeInspect")?.addEventListener("click", () => closeInspectPopover());
   $("measureQ0")?.addEventListener("click", () => measureQubit(0));
   $("measureQ1")?.addEventListener("click", () => measureQubit(1));
+
+  // Beginner controls
+  $("beginnerActionUndecided")?.addEventListener("click", () => applyBeginnerGate("H"));
+  $("beginnerActionFlip")?.addEventListener("click", () => applyBeginnerGate("X"));
+  $("beginnerActionTwist")?.addEventListener("click", () => applyBeginnerGate("Z"));
+  $("beginnerActionMeasure")?.addEventListener("click", () => applyBeginnerGate("M"));
+  $("beginnerActionReset")?.addEventListener("click", () => resetBeginnerState());
+  $("beginnerShowTimeline")?.addEventListener("click", () => setBeginnerTimelineVisible(!beginnerShowTimeline));
+  $("beginnerShowBloch")?.addEventListener("click", () => setBeginnerBlochVisible(!beginnerShowBloch));
+  $("beginnerTimeline")?.addEventListener("input", (e) => {
+    const val = Number(e.target.value);
+    if (!Number.isFinite(val)) return;
+    beginnerHasScrubbed = true;
+    setActiveStepDirect(val - 1);
+    maybeRevealBloch();
+  });
+  document.querySelectorAll("[data-preset]")?.forEach((btn) => {
+    btn.addEventListener("click", () => applyBeginnerPreset(btn.dataset.preset));
+  });
+  $("beginnerSeedApply")?.addEventListener("click", () => {
+    const val = $("beginnerSeed")?.value;
+    setMeasurementSeed(val);
+    const input = $("beginnerSeed");
+    if (input) input.value = measurementSeed == null ? "" : String(measurementSeed);
+  });
+  $("beginnerSeedReroll")?.addEventListener("click", () => {
+    rerollMeasurementSeed();
+    const input = $("beginnerSeed");
+    if (input) input.value = String(measurementSeed ?? "");
+  });
+  const seedInput = $("beginnerSeed");
+  if (seedInput) {
+    seedInput.value = measurementSeed == null ? "" : String(measurementSeed);
+    seedInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      setMeasurementSeed(seedInput.value);
+      seedInput.value = measurementSeed == null ? "" : String(measurementSeed);
+    });
+  }
 
   // Backdrop closes overlays (drawer/prob/menu only)
   $("overlayBackdrop")?.addEventListener("click", () => closeAllOverlays());

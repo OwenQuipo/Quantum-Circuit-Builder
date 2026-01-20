@@ -83,7 +83,7 @@ function makeGlyphTexture(text = "ENT") {
   ctx.fillStyle = "transparent";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 18px 'Press Start 2P', monospace";
+  ctx.font = "600 16px 'Space Grotesk', sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
@@ -154,6 +154,7 @@ class BlochSphereWidget {
     this.mountEl = mountEl;
     this.qubitIndex = qubitIndex;
     this.state = normalizeState({ alpha: c(1, 0), beta: c(0, 0) });
+    this.quietMode = document.body.classList.contains("quiet-mode");
 
     this.scene = null;
     this.camera = null;
@@ -184,6 +185,8 @@ class BlochSphereWidget {
     this.axisMaterials = [];
     this.sphereMat = null;
     this.sphereWireMat = null;
+    this.detailVisible = true;
+    this.detailTarget = 0.18;
     this.baseCameraPos = null;
 
     this.entanglement = {
@@ -213,7 +216,7 @@ class BlochSphereWidget {
     const height = this.mountEl.clientHeight || 300;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(this.palette.bg);
+    this.scene.background = this.quietMode ? null : new THREE.Color(this.palette.bg);
 
     this.camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
     this.camera.position.set(2.8, 2.2, 2.8);
@@ -223,6 +226,7 @@ class BlochSphereWidget {
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.domElement.style.imageRendering = "pixelated";
+    if (this.quietMode) this.renderer.setClearColor(0x000000, 0);
     this.mountEl.appendChild(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -251,9 +255,8 @@ class BlochSphereWidget {
       this.sphereWireMat
     );
     this.blochGroup.add(sphereWire);
-
     const axisLine = (p1, p2) => {
-      const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.palette.axis) });
+      const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.palette.axis), transparent: true, opacity: 0.55 });
       this.axisMaterials.push(mat);
       return new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1, p2]), mat);
     };
@@ -307,12 +310,14 @@ class BlochSphereWidget {
       new THREE.LineBasicMaterial({ color: new THREE.Color(this.palette.trace), transparent: true, depthTest: false })
     );
     this.traceLine.renderOrder = 10;
+    this.traceLine.visible = true;
     this.blochGroup.add(this.traceLine);
 
     this._initFogOverlay();
     this._initGlyph();
 
     this._applyPalette();
+    this.setDetailVisibility(this.detailVisible);
     this._animateLoop();
   }
 
@@ -332,12 +337,28 @@ class BlochSphereWidget {
     this.renderer.setSize(w, h);
   }
 
+  setDetailVisibility(show) {
+    if (!this.quietMode) return;
+    const visible = !!show;
+    this.detailVisible = visible;
+    this.detailTarget = visible ? 0.18 : 0.18;
+    if (this.sphereMat) {
+      this.sphereMat.transparent = true;
+      this.sphereMat.needsUpdate = true;
+    }
+    if (this.sphereWireMat) {
+      this.sphereWireMat.transparent = true;
+      this.sphereWireMat.needsUpdate = true;
+    }
+    if (this.traceLine) this.traceLine.visible = false;
+  }
+
   setStateAndTrace(state, traceVecs, { hideArrow = false, hideTrace = false } = {}) {
     this.isAnimating = false;
     this._animResolve?.();
     this._animResolve = null;
     this.forceHideArrow = !!hideArrow;
-    this.forceHideTrace = !!hideTrace;
+    this.forceHideTrace = this.quietMode ? false : !!hideTrace;
 
     if (state.rho) {
       const pure = rhoToPureState(state.rho);
@@ -410,6 +431,11 @@ class BlochSphereWidget {
     this.controls?.update?.();
     this._tickEntanglement();
     if (this.isAnimating) this._animateGateStep();
+    if (this.quietMode && this.sphereMat && this.sphereWireMat) {
+      const next = lerp(this.sphereMat.opacity ?? 0, this.detailTarget ?? 0, 0.08);
+      this.sphereMat.opacity = next;
+      this.sphereWireMat.opacity = next;
+    }
     this.renderer?.render?.(this.scene, this.camera);
   }
 
@@ -425,7 +451,7 @@ class BlochSphereWidget {
     const scaledLen = Math.max(0, Math.min(1, len));
     this._applyVectorVisuals(dir, scaledLen, len > eps && !this.forceHideArrow, current);
 
-    this.tracePoints.push(current.clone());
+    this.tracePoints.push(this._projectToSphere(current));
     if (this.tracePoints.length > this.MAX_TRACE) this.tracePoints.shift();
     this._rebuildTraceGeometry();
 
@@ -449,20 +475,29 @@ class BlochSphereWidget {
     this._applyVectorVisuals(dir, scaledLen, visible, vec);
 
     if (resetTrace) {
-      this.tracePoints = [vec.clone()];
+      this.tracePoints = [this._projectToSphere(vec)];
       this._rebuildTraceGeometry();
     }
 
     if (this.traceLine?.material) {
-      this.traceLine.visible = !this.forceHideTrace;
-      this.traceLine.material.opacity = this.forceHideTrace ? 0 : 1;
+      const allow = !this.forceHideTrace;
+      this.traceLine.visible = allow;
+      this.traceLine.material.opacity = allow ? 1 : 0;
     }
   }
 
   _rebuildTraceGeometry() {
     if (!this.traceLine) return;
     this.traceLine.geometry.dispose();
-    this.traceLine.geometry = new THREE.BufferGeometry().setFromPoints(this.tracePoints);
+    const points = this.tracePoints.map((pt) => this._projectToSphere(pt));
+    this.traceLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
+  }
+
+  _projectToSphere(vec) {
+    const v = vec.clone();
+    const len = v.length();
+    if (len < 1e-4) return new THREE.Vector3(0, 0, 1);
+    return v.normalize();
   }
 
   _rotateVectorAroundAxis(vec, axis, angle) {
@@ -525,8 +560,15 @@ class BlochSphereWidget {
   _applyPalette() {
     if (!this.palette) return;
     const p = this.palette;
-    this.scene.background = new THREE.Color(p.bg);
-    this.renderer?.setClearColor(new THREE.Color(p.bg), 1);
+    if (this.quietMode) {
+      this.scene.background = null;
+      this.renderer?.setClearColor(0x000000, 0);
+      if (this.renderer?.domElement) this.renderer.domElement.style.backgroundColor = "transparent";
+    } else {
+      this.scene.background = new THREE.Color(p.bg);
+      this.renderer?.setClearColor(new THREE.Color(p.bg), 1);
+      if (this.renderer?.domElement) this.renderer.domElement.style.backgroundColor = p.bg;
+    }
     if (this.sphereMat) this.sphereMat.color.set(p.sphere);
     if (this.sphereWireMat) this.sphereWireMat.color.set(p.wire);
     this.axisMaterials.forEach((m) => m.color.set(p.axis));
@@ -537,7 +579,6 @@ class BlochSphereWidget {
     }
     if (this.traceLine?.material) this.traceLine.material.color.set(p.trace);
     this.labelSprites.forEach((sprite) => sprite.material?.color?.set(p.label));
-    if (this.renderer?.domElement) this.renderer.domElement.style.backgroundColor = p.bg;
     if (this.sphereMat) {
       this.sphereMat.emissive = new THREE.Color(p.axis).multiplyScalar(0.08);
       this.sphereMat.emissiveIntensity = 0.5;
