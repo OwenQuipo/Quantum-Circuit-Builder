@@ -5,16 +5,15 @@
   height: 100%;
   padding: 12px;
   box-sizing: border-box;
+  background: var(--surface);
+  background-image: none;
 }
 
 #circuit-grid{
   position: relative;
   height: 100%;
   border-radius: 6px;
-  background:
-    repeating-linear-gradient(90deg, var(--pixel-grid), var(--pixel-grid) 1px, transparent 1px, transparent 6px),
-    repeating-linear-gradient(0deg, var(--pixel-grid), var(--pixel-grid) 1px, transparent 1px, transparent 6px),
-    var(--surface);
+  background: var(--surface);
   box-shadow: inset 0 0 0 2px var(--line), 0 0 0 2px var(--line), 6px 6px 0 var(--shadow);
   overflow: auto;
   resize: both;
@@ -406,6 +405,7 @@ body.quiet-mode.quiet-show-circuit #circuitCanvas{
   height: min(24vmin, 240px);
   padding: 0;
   margin-bottom: clamp(40px, 10vh, 120px);
+  margin-left: -60px;
   background: transparent !important;
   background-image: none !important;
   pointer-events: auto;
@@ -455,6 +455,11 @@ body.quiet-mode.quiet-show-circuit .gate-box{
   border: 2px solid #111111;
   color: #111111;
   box-shadow: none;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 body.quiet-mode.quiet-show-circuit{
   --circuit-wire: #111111;
@@ -475,6 +480,8 @@ body.quiet-mode.quiet-show-circuit .gate-m{
   color: #111111;
   border-color: #111111;
   box-shadow: none;
+  width: 40px;
+  height: 40px;
 }
 body.quiet-mode.quiet-show-circuit .ccontrol{
   background: #111111;
@@ -485,4 +492,25 @@ body.quiet-mode.quiet-show-circuit .ctarget{
 body.quiet-mode.quiet-show-circuit .ctarget::before,
 body.quiet-mode.quiet-show-circuit .ctarget::after{
   background: #111111;
+}
+
+#gateQuickTip{
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+  max-width: 220px;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  text-transform: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 9500;
+}
+#gateQuickTip.on{
+  opacity: 1;
 }

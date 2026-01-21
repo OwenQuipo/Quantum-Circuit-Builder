@@ -360,14 +360,6 @@ function rebuildBlochGrid() {
     stateChip.textContent = "";
     tile.appendChild(stateChip);
 
-    tile.addEventListener("click", () => {
-      selectedQubit = i;
-      refreshSelectedUI();
-      updateProbPopover();
-      updateBackendMath();
-      updateBeginnerPanels();
-    });
-
     grid.appendChild(tile);
 
     const widget = new BlochSphereWidget({ mountEl: mount, qubitIndex: i });
@@ -658,7 +650,7 @@ const C_STEP_W = 64;
 const C_ROW_H = 64;
 const C_TOP_PAD = 34;
 
-const INITIAL_STEP_COUNT = 12;
+const INITIAL_STEP_COUNT = 6;
 
 let stepCount = INITIAL_STEP_COUNT;
 let singleQ = [];
@@ -686,6 +678,17 @@ function initCircuitModel() {
   measurementOdds = Array.from({ length: stepCount }, () => Array(qubitCount).fill(null));
   measuredVisualOutcomes = Array.from({ length: qubitCount }, () => null);
   updateSelectionState();
+}
+
+function extendCircuitSteps(nextCount) {
+  const desired = Math.max(stepCount + 1, nextCount ?? stepCount + 1);
+  if (desired <= stepCount) return;
+  stepCount = desired;
+  ensureCircuitDimensions();
+  renderCircuit();
+  updateActiveStepUI();
+  updateBeginnerTimelineUI();
+  noiseOverlay?.setStepCount?.(stepCount);
 }
 
 function ensureCircuitDimensions() {
@@ -857,12 +860,35 @@ function gateTooltip(g) {
   return descriptions[g] || `Gate ${g}`;
 }
 
+function gateHoverBlurb(g) {
+  const blurbs = {
+    X: "Flip the answer. Turns a definite 0 into 1, and 1 into 0.",
+    Y: "Flip + twist. Like X, but adds a hidden twist that changes interference.",
+    Z: "Change the attitude, not the outcome. Probabilities stay, interference shifts.",
+    H: "Make it undecided. A balanced mix of 0 and 1.",
+    S: "Quarter twist. A subtle phase shift that reshapes interference.",
+    T: "Eighth twist. Finer phase adjustment beyond Clifford gates.",
+    CX: "Control decides if the target flips.",
+    M: "Measure now. Collapse to a single outcome.",
+  };
+  return blurbs[g] || "";
+}
+
 function gateDescription(g) {
   const descriptions = {
     CX: "Controlled-X (CNOT) flips target if control=1.",
     M: "Measurement glyph used for visualization.",
   };
   return descriptions[g] || "";
+}
+
+function ensureGateQuickTip() {
+  let tip = $("gateQuickTip");
+  if (tip) return tip;
+  tip = document.createElement("div");
+  tip.id = "gateQuickTip";
+  document.body.appendChild(tip);
+  return tip;
 }
 
 function gateHoverContent(gateName) {
@@ -1398,6 +1424,7 @@ function renderGatePalette() {
     item.setAttribute("draggable", "true");
     item.dataset.gate = g;
     item.dataset.tip = gateTooltip(g);
+    item.dataset.desc = gateHoverBlurb(g) || gateTooltip(g);
 
     const box = document.createElement("div");
     box.className = "gate-box " + gateColorClass(g);
@@ -1683,7 +1710,9 @@ async function stepBack() {
 
 async function stepForward() {
   if (stepBusy) return;
-  if (activeStep >= stepCount - 1) return;
+  if (activeStep >= stepCount - 1) {
+    extendCircuitSteps(stepCount + 1);
+  }
 
   stepBusy = true;
   const next = activeStep + 1;
@@ -1734,6 +1763,10 @@ function renderCircuit() {
 
   ensureCircuitDimensions();
   canvas.innerHTML = "";
+  canvas.style.background = "var(--bg)";
+  canvas.style.backgroundImage = "none";
+  grid.style.background = "var(--bg)";
+  grid.style.backgroundImage = "none";
 
   const width = C_LABEL_W + stepCount * C_STEP_W + 20;
   const height = C_TOP_PAD + qubitCount * C_ROW_H + 18;
@@ -1846,6 +1879,7 @@ function renderCircuit() {
       gate.style.left = `${x}px`;
       gate.style.top = `${y}px`;
       gate.dataset.tip = g === "M" ? "Measurement gate" : `Gate ${g}`;
+      gate.dataset.desc = gateHoverBlurb(g) || gate.dataset.tip;
       if (g === "M") {
         gate.classList.add("cgate-measure");
         const icon = document.createElement("div");
@@ -2796,6 +2830,7 @@ function initQuietModeUI() {
   if (!canvas || !prompt || !wheel) return;
   if (pane && hud && hud.parentNode !== pane) pane.appendChild(hud);
   ensureCircuitKeyNav();
+  const gateTip = $("quietTooltip");
 
   const openWheel = () => {
     quietWheelOpen = true;
@@ -2876,6 +2911,23 @@ function initQuietModeUI() {
     btn.addEventListener("focus", showTip);
     btn.addEventListener("mouseleave", hideTip);
     btn.addEventListener("blur", hideTip);
+  });
+
+  document.addEventListener("mouseover", (e) => {
+    if (!document.body.classList.contains("quiet-show-circuit")) return;
+    const target = e.target.closest(".palette-gate, .cgate");
+    if (!target || !gateTip) return;
+    const text = target.dataset.desc || target.dataset.tip || "";
+    if (!text) return;
+    gateTip.textContent = text;
+    gateTip.classList.add("on");
+  });
+  document.addEventListener("mouseout", (e) => {
+    if (!gateTip) return;
+    if (e.target.closest(".palette-gate, .cgate")) {
+      gateTip.classList.remove("on");
+      gateTip.textContent = "";
+    }
   });
 
   secondary?.addEventListener("click", (e) => {
