@@ -157,7 +157,6 @@ const GATES = {
     axis: { x: 0, y: 0, z: 1 },
     angle: -Math.PI / 4,
   },
-  // Measurement: visual only, treated as identity for math/animation.
   M: { matrix: [[c(1, 0), c(0, 0)], [c(0, 0), c(1, 0)]], axis: { x: 0, y: 0, z: 1 }, angle: 0 },
 };
 

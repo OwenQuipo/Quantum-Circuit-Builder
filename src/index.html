@@ -201,10 +201,33 @@
           <div id="quietHud">
             <button id="quietPrompt" type="button">change state</button>
             <div id="quietActionWheel" role="menu" aria-label="Qubit actions">
-              <button class="quiet-action" type="button" data-action="undecided" data-desc="<strong>Make it undecided.</strong><br>Turns a definite answer into a balanced mix of 0 and 1.<br>\(H\lvert 0 \rangle = \tfrac{\lvert 0 \rangle + \lvert 1 \rangle}{\sqrt{2}}\)<br>This is the gateway to everything quantum: interference, entanglement, and weirdness.">make undecided</button>
-              <button class="quiet-action" type="button" data-action="flip" data-desc="<strong>Flip the answer.</strong><br>Turns a definite 0 into 1, and 1 into 0.<br>\(X\lvert 0 \rangle = \lvert 1 \rangle\)<br>If the qubit was undecided, it swaps the chances instead of choosing.">flip</button>
-              <button class="quiet-action" type="button" data-action="measure" data-desc="<strong>Measure.</strong><br>Collapse to a single outcome right now.">measure</button>
-              <button class="quiet-action" type="button" data-action="detail" data-desc="<strong>Show circuit.</strong><br>Reveal the circuit timeline.">show circuit</button>
+              <div class="quiet-tabs" role="tablist" aria-label="Action tabs">
+                <button class="quiet-tab is-active" type="button" data-tab="core" role="tab" aria-selected="true">core</button>
+                <button class="quiet-tab" type="button" data-tab="fun" role="tab" aria-selected="false">neat things</button>
+              </div>
+              <div class="quiet-panel" data-tab="core">
+                <button class="quiet-action" type="button" data-action="undecided" data-desc="<strong>Make it undecided.</strong><br>Turns a definite answer into a balanced mix of 0 and 1.<br>\(H\lvert 0 \rangle = \tfrac{\lvert 0 \rangle + \lvert 1 \rangle}{\sqrt{2}}\)<br>This is the gateway to everything quantum: interference, entanglement, and weirdness.">make undecided</button>
+                <button class="quiet-action" type="button" data-action="flip" data-desc="<strong>Flip the answer.</strong><br>Turns a definite 0 into 1, and 1 into 0.<br>\(X\lvert 0 \rangle = \lvert 1 \rangle\)<br>If the qubit was undecided, it swaps the chances instead of choosing.">flip</button>
+                <button class="quiet-action" type="button" data-action="measure" data-desc="<strong>Measure.</strong><br>Collapse to a single outcome right now.">measure</button>
+                <button class="quiet-action" type="button" data-action="detail" data-desc="<strong>Show circuit.</strong><br>Reveal the circuit timeline.">show circuit</button>
+                <button class="quiet-action" type="button" data-action="reset" data-desc="<strong>Reset.</strong><br>Return to the initial step.">reset</button>
+              </div>
+              <div class="quiet-panel" data-tab="fun">
+                <button class="quiet-action" type="button" data-action="entangle-demo" data-desc="<strong>Entanglement demo.</strong><br>Watch two qubits share a single, linked state.">entangle</button>
+                <div id="funEntangleDesc" class="quiet-fun-desc">
+                  \( \lvert \Phi^+ \rangle = \tfrac{\lvert 00 \rangle + \lvert 11 \rangle}{\sqrt{2}} \)
+                  <br />
+                  \( \lvert \Phi^- \rangle = \tfrac{\lvert 00 \rangle - \lvert 11 \rangle}{\sqrt{2}} \)
+                  <br />
+                  \( \lvert \Psi^+ \rangle = \tfrac{\lvert 01 \rangle + \lvert 10 \rangle}{\sqrt{2}} \)
+                  <br />
+                  \( \lvert \Psi^- \rangle = \tfrac{\lvert 01 \rangle - \lvert 10 \rangle}{\sqrt{2}} \)
+                  <br />
+                  Entanglement links two qubits into a single shared state. Measuring one instantly fixes the other’s outcome,
+                  not by sending a signal, but because the pair is described by one joint wavefunction. The results are correlated
+                  in ways no classical system can reproduce.
+                </div>
+              </div>
             </div>
             <div id="quietTooltip" aria-hidden="true"></div>
             <div id="quietStateLine" aria-live="polite"></div>

@@ -22,6 +22,14 @@
   max-width: 100%;
   max-height: 100%;
 }
+#circuit-labels{
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  pointer-events: auto;
+  background: transparent;
+}
 
 #initStateMenu{
   position: absolute;
@@ -29,6 +37,9 @@
   padding: 10px;
   border-radius: 4px;
   background: var(--surface);
+  background-image: none;
+  appearance: none;
+  -webkit-appearance: none;
   box-shadow: 0 0 0 2px var(--line), 6px 6px 0 var(--shadow);
   color: var(--text);
   z-index: 5000;
@@ -52,6 +63,9 @@
   border-radius: 4px;
   padding: 8px 8px;
   background: var(--surface2);
+  background-image: none;
+  appearance: none;
+  -webkit-appearance: none;
   color: var(--text);
   cursor: pointer;
   font-weight: 700;
@@ -84,6 +98,18 @@
   font-size: 0.78rem;
   color: var(--muted);
   pointer-events: none;
+  transform-origin: 50% 50%;
+  transition: color 0.2s ease;
+}
+.cstep-label.is-active{
+  color: var(--text);
+  font-weight: 700;
+  animation: step-bob 0.9s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes step-bob{
+  0%, 100%{ transform: translateY(0) scale(1.08); }
+  50%{ transform: translateY(-4px) scale(1.14); }
 }
 
 .cwire-label{
@@ -410,6 +436,9 @@ body.quiet-mode.quiet-show-circuit #circuitCanvas{
   background-image: none !important;
   pointer-events: auto;
 }
+body.quiet-mode.quiet-show-circuit #circuitCanvas .noise-overlay{
+  display: none;
+}
 body.quiet-mode.quiet-show-circuit #circuit-grid{
   background: transparent !important;
   background-image: none !important;
@@ -419,7 +448,7 @@ body.quiet-mode.quiet-show-circuit #circuit-grid{
   min-width: 0;
   min-height: 0;
   resize: none;
-  overflow: visible;
+  overflow: hidden;
 }
 body.quiet-mode.quiet-show-circuit .toolstrip{
   opacity: 0.35;

@@ -144,6 +144,7 @@ let entanglementLevel = 0;
 let entangledPairs = new Map(); // key -> { qubits: [a,b], rho }
 let latestPairStates = new Map(); // key -> { qubits: [a,b], rho }
 let latestStateVector = null;
+let entangleDemo = null;
 let corrPairKey = null;
 const ENTANGLEMENT_LABEL_DEFAULT = "State stored in correlations";
 const BLOCH_TILE_SIZE_KEY = "blochTileMinPx";
@@ -428,6 +429,78 @@ if (typeof window !== "undefined") {
   window.setEntanglementLevel = setEntanglementLevel;
   window.triggerEntanglementBurst = triggerEntanglementBurst;
   window.clearEntanglement = clearEntanglement;
+}
+
+function stopEntangleDemo() {
+  if (!entangleDemo) return;
+  document.body.classList.remove("entangle-demo-on");
+  if (entangleDemo.timer) clearTimeout(entangleDemo.timer);
+  entangleDemo.visuals?.dispose?.();
+  entangleDemo.widgets?.forEach((w) => w?.destroy?.());
+  entangleDemo.container?.remove?.();
+  const grid = $("bloch-grid");
+  if (grid?.dataset.entangleHidden === "1") {
+    grid.style.opacity = "";
+    grid.style.pointerEvents = "";
+    grid.style.visibility = "";
+    delete grid.dataset.entangleHidden;
+  }
+  const btn = document.querySelector('.quiet-action[data-action="entangle-demo"]');
+  if (btn) btn.textContent = "entangle";
+  entangleDemo = null;
+}
+
+function startEntangleDemo() {
+  stopEntangleDemo();
+  const host = $("blochCanvas") || document.body;
+  if (!host) return;
+
+  const container = document.createElement("div");
+  container.id = "entangleDemo";
+  container.className = "entangle-demo";
+
+  const left = document.createElement("div");
+  left.className = "entangle-demo-sphere";
+  const right = document.createElement("div");
+  right.className = "entangle-demo-sphere";
+  container.appendChild(left);
+  container.appendChild(right);
+  host.appendChild(container);
+
+  const widgetA = new BlochSphereWidget({ mountEl: left, qubitIndex: 0 });
+  const widgetB = new BlochSphereWidget({ mountEl: right, qubitIndex: 1 });
+  widgetA.init();
+  widgetB.init();
+  widgetA.setTheme?.(themeMode);
+  widgetB.setTheme?.(themeMode);
+
+  const visuals = new EntanglementVisuals({
+    containerEl: container,
+    widgets: [{ widget: widgetA, mountEl: left }, { widget: widgetB, mountEl: right }],
+    pairs: [[0, 1]],
+  });
+  visuals.setEntanglementLevel(1);
+  visuals.triggerEntanglementBurst(700);
+
+  document.body.classList.add("entangle-demo-on");
+  const grid = $("bloch-grid");
+  if (grid) {
+    grid.dataset.entangleHidden = "1";
+    grid.style.opacity = "0";
+    grid.style.pointerEvents = "none";
+    grid.style.visibility = "hidden";
+  }
+  const btn = document.querySelector('.quiet-action[data-action="entangle-demo"]');
+  if (btn) btn.textContent = "stop animation";
+  const desc = $("funEntangleDesc");
+  if (desc) typesetNode(desc);
+
+  entangleDemo = {
+    container,
+    visuals,
+    widgets: [widgetA, widgetB],
+    timer: null,
+  };
 }
 
 function resizeAllWidgets() {
@@ -1537,13 +1610,30 @@ function updateActiveStepUI() {
   setText("stepCountLabel", String(stepCount));
   noiseOverlay?.setActiveStep?.(activeStep);
 
+  document.querySelectorAll(".cstep-label").forEach((el) => {
+    const s = Number(el.dataset.step);
+    el.classList.toggle("is-active", s === activeStep);
+  });
+
   document.querySelectorAll(".cstep-highlight").forEach((el) => {
     const s = Number(el.dataset.step);
     el.classList.toggle("on", s === activeStep);
   });
 
+  scrollCircuitStepWindow();
+
   updateBackendMath();
   updateBeginnerTimelineUI();
+}
+
+function scrollCircuitStepWindow() {
+  const grid = $("circuit-grid");
+  if (!grid || activeStep < 0) return;
+  const groupStart = activeStep <= 5 ? 0 : (Math.floor((activeStep - 1) / 5) * 5 + 1);
+  const left = Math.max(0, C_LABEL_W + groupStart * C_STEP_W - 12);
+  if (Math.abs(grid.scrollLeft - left) > 2) {
+    grid.scrollTo({ left, behavior: "instant" });
+  }
 }
 
 function rotateVectorAroundAxis(vec, axis, angle) {
@@ -1774,6 +1864,16 @@ function renderCircuit() {
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
 
+  let labelLayer = $("circuit-labels");
+  if (!labelLayer) {
+    labelLayer = document.createElement("div");
+    labelLayer.id = "circuit-labels";
+    grid.appendChild(labelLayer);
+  }
+  labelLayer.innerHTML = "";
+  labelLayer.style.width = `${C_LABEL_W}px`;
+  labelLayer.style.height = `${height}px`;
+
   dropHighlightEl = document.createElement("div");
   dropHighlightEl.className = "cdrop-highlight";
   canvas.appendChild(dropHighlightEl);
@@ -1781,6 +1881,8 @@ function renderCircuit() {
   for (let s = 0; s < stepCount; s++) {
     const lbl = document.createElement("div");
     lbl.className = "cstep-label";
+    lbl.dataset.step = String(s);
+    if (s === activeStep) lbl.classList.add("is-active");
     lbl.style.left = `${C_LABEL_W + s * C_STEP_W}px`;
     lbl.style.width = `${C_STEP_W}px`;
     lbl.textContent = `t${s}`;
@@ -1798,7 +1900,7 @@ function renderCircuit() {
       e.stopPropagation();
       showInitStateMenu(q, label);
     });
-    canvas.appendChild(label);
+    labelLayer.appendChild(label);
 
     const ket = document.createElement("div");
     ket.className = "cwire-ket";
@@ -1812,7 +1914,7 @@ function renderCircuit() {
       e.stopPropagation();
       showInitStateMenu(q, ket);
     });
-    canvas.appendChild(ket);
+    labelLayer.appendChild(ket);
   }
 
   for (let s = 0; s < stepCount; s++) {
@@ -1823,6 +1925,8 @@ function renderCircuit() {
     hi.style.width = `${C_STEP_W}px`;
     canvas.appendChild(hi);
   }
+
+  scrollCircuitStepWindow();
 
   const svgNS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNS, "svg");
@@ -2652,21 +2756,29 @@ function setQuietCircuitVisible(on) {
       el.style.setProperty("border-radius", "0", "important");
     });
     const pane = $("circuitPane");
-    if (pane) {
-      pane.setAttribute("tabindex", "0");
-      pane.focus({ preventScroll: true });
+    const focusTarget = $("circuitCanvas") || pane;
+    if (focusTarget) {
+      focusTarget.setAttribute("tabindex", "0");
+      focusTarget.focus({ preventScroll: true });
     }
   }
 }
 
 function ensureCircuitKeyNav() {
-  const pane = $("circuitPane");
-  if (!pane || pane.dataset.keyNav === "1") return;
-  pane.dataset.keyNav = "1";
-  pane.setAttribute("tabindex", "0");
-  pane.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowLeft") { e.preventDefault(); stepBack(); }
-    else if (e.key === "ArrowRight") { e.preventDefault(); stepForward(); }
+  const canvas = $("circuitCanvas");
+  if (!canvas || canvas.dataset.keyNav === "1") return;
+  canvas.dataset.keyNav = "1";
+  canvas.setAttribute("tabindex", "0");
+  canvas.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      e.stopPropagation();
+      stepBack();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      e.stopPropagation();
+      stepForward();
+    }
   });
 }
 
@@ -2835,10 +2947,18 @@ function initQuietModeUI() {
   const openWheel = () => {
     quietWheelOpen = true;
     document.body.classList.add("quiet-wheel-open");
+    wheel.dataset.tab = wheel.dataset.tab || "core";
   };
   const closeWheel = () => {
+    if (entangleDemo) return;
     quietWheelOpen = false;
     document.body.classList.remove("quiet-wheel-open");
+    wheel.dataset.tab = "core";
+    wheel.querySelectorAll(".quiet-tab").forEach((btn) => {
+      const on = btn.dataset.tab === "core";
+      btn.classList.toggle("is-active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
   };
 
   const scheduleDetail = () => {
@@ -2876,11 +2996,30 @@ function initQuietModeUI() {
     const btn = e.target.closest("[data-action]");
     if (!btn) return;
     const action = btn.dataset.action;
+    if (action === "entangle-demo") {
+      if (entangleDemo) stopEntangleDemo();
+      else startEntangleDemo();
+      return;
+    }
     if (action === "undecided") applyBeginnerGate("H");
     if (action === "flip") applyBeginnerGate("X");
     if (action === "measure") applyBeginnerGate("M");
+    if (action === "reset") resetStepCursor();
     if (action === "detail") setQuietCircuitVisible(!quietShowCircuit);
     closeWheel();
+  });
+
+  wheel.querySelectorAll(".quiet-tab").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const tab = btn.dataset.tab || "core";
+      wheel.dataset.tab = tab;
+      wheel.querySelectorAll(".quiet-tab").forEach((other) => {
+        const on = other.dataset.tab === tab;
+        other.classList.toggle("is-active", on);
+        other.setAttribute("aria-selected", on ? "true" : "false");
+      });
+    });
   });
 
   hideCircuitBtn?.addEventListener("click", (e) => {
@@ -2939,6 +3078,7 @@ function initQuietModeUI() {
 
   document.addEventListener("click", (e) => {
     if (!quietWheelOpen) return;
+    if (entangleDemo) return;
     if (wheel.contains(e.target) || prompt.contains(e.target)) return;
     closeWheel();
   });

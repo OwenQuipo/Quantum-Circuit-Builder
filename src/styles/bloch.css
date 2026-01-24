@@ -487,6 +487,9 @@ body.beginner-mode:not(.beginner-show-bloch) #blochRevealOverlay{
   text-transform: uppercase;
   border: none;
   background: transparent;
+  background-image: none;
+  appearance: none;
+  -webkit-appearance: none;
   padding: 6px 8px;
   opacity: 0;
   transition: opacity 0.35s ease, transform 0.35s ease;
@@ -517,6 +520,8 @@ body.quiet-mode.quiet-wheel-open #quietPrompt{
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s ease, transform 0.25s ease;
+  background: transparent;
+  background-image: none;
 }
 body.quiet-mode.quiet-wheel-open #quietActionWheel{
   opacity: 1;
@@ -562,15 +567,95 @@ body.quiet-mode.quiet-wheel-open #quietActionWheel{
 #quietHideCircuit:hover{
   color: var(--text);
 }
+.quiet-tabs{
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+.quiet-tab{
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.quiet-tab.is-active{
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.quiet-panel{
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+}
+#quietActionWheel[data-tab="core"] .quiet-panel[data-tab="core"],
+#quietActionWheel[data-tab="fun"] .quiet-panel[data-tab="fun"]{
+  display: flex;
+}
 .quiet-action{
   border: none;
   background: transparent;
+  background-image: none;
+  appearance: none;
+  -webkit-appearance: none;
   color: var(--text);
   font-size: 0.95rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 4px 10px;
   cursor: pointer;
+}
+.quiet-fun-desc{
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, calc(-50% - 150px));
+  margin: 0;
+  width: min(720px, 80vw);
+  max-width: 650px;
+  font-family: "STIX Two Text", "Times New Roman", serif;
+  font-size: clamp(0.95rem, 1.3vw + 0.55rem, 1.2rem);
+  line-height: 1.55;
+  color: #2a2824;
+  letter-spacing: 0.005em;
+  font-weight: 500;
+  text-transform: none;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 80;
+  pointer-events: none;
+  text-wrap: balance;
+  word-break: normal;
+  white-space: normal;
+}
+.quiet-fun-desc mjx-container{
+  font-size: 1.2em;
+}
+body.entangle-demo-on #funEntangleDesc{
+  opacity: 1;
+}
+.entangle-demo{
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 clamp(48px, 12vw, 180px);
+  pointer-events: none;
+  z-index: 70;
+}
+.entangle-demo-sphere{
+  width: clamp(160px, 26vmin, 280px);
+  height: clamp(160px, 26vmin, 280px);
+}
+body.entangle-demo-on #bloch-grid{
+  opacity: 0;
+  pointer-events: none;
 }
 .quiet-action::before{
   content: "•";
