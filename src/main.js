@@ -1,6 +1,5 @@
 // main.js
-import "./styles/index.css";
-import * as THREE from "three";
+import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { CoinFlipAnimator } from "./visuals/coin-flip";
 import { BlochSphereWidget } from "./visuals/bloch-sphere";
 import { EntanglementVisuals } from "./visuals/entanglement-visuals";

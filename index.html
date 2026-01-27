@@ -6,14 +6,13 @@
   <title>Qubit Visualizer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <link rel="stylesheet" href="./src/styles/index.css" />
+  <link rel="stylesheet" href="./styles.css" />
 
   <!-- MathJax for LaTeX rendering -->
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
-  <script type="module" src="./src/main.js"></script>
 </head>
 
-<body data-theme="dark" class="beginner-mode">
+<body data-theme="dark">
   <div id="qubit-visualizer">
     <!-- =========================
          Topbar (always visible)
@@ -77,6 +76,16 @@
 
         <div id="moreMenuPopover" class="menu-popover" role="menu" aria-label="More menu">
           <button class="menu-item danger" id="menuClearCircuit" role="menuitem">Clear circuit…</button>
+
+          <div class="menu-sep"></div>
+
+          <div class="menu-group" role="none">
+            <div class="menu-label">Bell states</div>
+            <button class="menu-item" id="menuBellPhiPlus" role="menuitem">Bell &Phi;+</button>
+            <button class="menu-item" id="menuBellPhiMinus" role="menuitem">Bell &Phi;-</button>
+            <button class="menu-item" id="menuBellPsiPlus" role="menuitem">Bell &Psi;+</button>
+            <button class="menu-item" id="menuBellPsiMinus" role="menuitem">Bell &Psi;-</button>
+          </div>
 
           <div class="menu-sep"></div>
 
@@ -189,12 +198,56 @@
         <div id="blochCanvas" aria-label="Bloch canvas region">
           <div id="bloch-grid"></div>
           <div id="blochRevealOverlay" class="bloch-reveal">Probabilities first. Scrub the timeline to reveal the Bloch view.</div>
+          <div id="quietHud">
+            <button id="quietPrompt" type="button">change state</button>
+            <div id="quietActionWheel" role="menu" aria-label="Qubit actions">
+              <div class="quiet-tabs" role="tablist" aria-label="Action tabs">
+                <button class="quiet-tab is-active" type="button" data-tab="core" role="tab" aria-selected="true">core</button>
+                <button class="quiet-tab" type="button" data-tab="fun" role="tab" aria-selected="false">neat things</button>
+              </div>
+              <div class="quiet-panel" data-tab="core">
+                <button class="quiet-action" type="button" data-action="undecided" data-desc="<strong>Make it undecided.</strong><br>Turns a definite answer into a balanced mix of 0 and 1.<br>\(H\lvert 0 \rangle = \tfrac{\lvert 0 \rangle + \lvert 1 \rangle}{\sqrt{2}}\)<br>This is the gateway to everything quantum: interference, entanglement, and weirdness.">make undecided</button>
+                <button class="quiet-action" type="button" data-action="flip" data-desc="<strong>Flip the answer.</strong><br>Turns a definite 0 into 1, and 1 into 0.<br>\(X\lvert 0 \rangle = \lvert 1 \rangle\)<br>If the qubit was undecided, it swaps the chances instead of choosing.">flip</button>
+                <button class="quiet-action" type="button" data-action="measure" data-desc="<strong>Measure.</strong><br>Collapse to a single outcome right now.">measure</button>
+                <button class="quiet-action" type="button" data-action="detail" data-desc="<strong>Show circuit.</strong><br>Reveal the circuit timeline.">show circuit</button>
+                <button class="quiet-action" type="button" data-action="reset" data-desc="<strong>Reset.</strong><br>Return to the initial step.">reset</button>
+              </div>
+              <div class="quiet-panel" data-tab="fun">
+                <button class="quiet-action" type="button" data-action="entangle-demo" data-desc="<strong>Entanglement demo.</strong><br>Watch two qubits share a single, linked state.">entangle</button>
+                <div id="funEntangleDesc" class="quiet-fun-desc">
+                  \( \lvert \Phi^+ \rangle = \tfrac{\lvert 00 \rangle + \lvert 11 \rangle}{\sqrt{2}} \)
+                  <br />
+                  \( \lvert \Phi^- \rangle = \tfrac{\lvert 00 \rangle - \lvert 11 \rangle}{\sqrt{2}} \)
+                  <br />
+                  \( \lvert \Psi^+ \rangle = \tfrac{\lvert 01 \rangle + \lvert 10 \rangle}{\sqrt{2}} \)
+                  <br />
+                  \( \lvert \Psi^- \rangle = \tfrac{\lvert 01 \rangle - \lvert 10 \rangle}{\sqrt{2}} \)
+                  <br />
+                  Entanglement links two qubits into a single shared state. Measuring one instantly fixes the other’s outcome,
+                  not by sending a signal, but because the pair is described by one joint wavefunction. The results are correlated
+                  in ways no classical system can reproduce.
+                </div>
+              </div>
+            </div>
+            <div id="quietTooltip" aria-hidden="true"></div>
+            <div id="quietStateLine" aria-live="polite"></div>
+            <div id="quietSecondaryLine" aria-live="polite">
+              <span id="quietSecondaryText"></span>
+              <span id="quietSecondaryValue" class="quiet-value"></span>
+            </div>
+            <button id="quietHideCircuit" type="button">hide circuit</button>
+          </div>
           <div id="entanglementBadge">State stored in correlations</div>
           <div id="correlationsPanel" class="micro-panel" aria-label="Correlations panel">
             <div class="micro-row">
               <div class="micro-title">Correlations</div>
               <button id="inspectRho" class="micro-icon" title="Inspect density matrix">⧉</button>
             </div>
+            <div class="corr-pair">
+              <span class="corr-label" id="corrPairLabel">Pair</span>
+              <select id="corrPairSelect" class="corr-select" aria-label="Select qubit pair"></select>
+            </div>
+            <div class="corr-hint">Choose a pair to view ⟨X⊗X⟩, ⟨Y⊗Y⟩, ⟨Z⊗Z⟩.</div>
             <div class="corr-row"><span>&lt;X⊗X&gt;</span><div class="corr-bar"><div id="corrXX" class="corr-fill"></div></div><span id="corrXXVal" class="corr-val">0</span></div>
             <div class="corr-row"><span>&lt;Y⊗Y&gt;</span><div class="corr-bar"><div id="corrYY" class="corr-fill"></div></div><span id="corrYYVal" class="corr-val">0</span></div>
             <div class="corr-row"><span>&lt;Z⊗Z&gt;</span><div class="corr-bar"><div id="corrZZ" class="corr-fill"></div></div><span id="corrZZVal" class="corr-val">0</span></div>
@@ -219,10 +272,6 @@
             <span class="settings-title">Settings</span>
             <div class="settings-actions">
               <button id="settingsCollapse" class="micro-icon" title="Collapse/expand">▾</button>
-              <button data-corner="tl" class="micro-icon corner-btn" title="Snap top-left">↖</button>
-              <button data-corner="tr" class="micro-icon corner-btn" title="Snap top-right">↗</button>
-              <button data-corner="bl" class="micro-icon corner-btn" title="Snap bottom-left">↙</button>
-              <button data-corner="br" class="micro-icon corner-btn" title="Snap bottom-right">↘</button>
             </div>
           </div>
           <div id="settingsBody" class="settings-body">
@@ -240,6 +289,12 @@
                 <span class="micro-pill">Tile size</span>
               <input id="blochTileSize" type="range" min="120" max="520" step="10" value="320" />
               <span id="blochTileSizeVal" class="micro-pill size-val">320px</span>
+              </label>
+
+              <label class="micro-slider" title="Adjust noise intensity">
+                <span class="micro-pill">Noise</span>
+              <input id="noiseLevel" type="range" min="0" max="100" step="1" value="45" />
+              <span id="noiseLevelVal" class="micro-pill size-val">45%</span>
               </label>
 
             <button id="openProbPopover" class="micro-btn" title="Probabilities">
@@ -371,5 +426,6 @@
     <div id="toast" class="toast"></div>
   </div>
 
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
