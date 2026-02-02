@@ -1,5 +1,5 @@
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
+import { OrbitControls } from "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js";
 
 // DOM helpers used across modules.
 function $(id) { return document.getElementById(id); }
@@ -998,20 +998,20 @@ const { BlochSphereWidget, makeLatexLabel } = (() => {
     dark: {
       bg: "#050505",
       sphere: "#0f0f0f",
-      wire: "#ffffff",
+      wire: "#9b9b9b",
       axis: "#67d5ff",
       arrow: "#ffffff",
       emissive: "#7a7a7a",
-      trace: "#ffffff",
+      trace: "#d0d0d0",
     },
     light: {
       bg: "#f8f8f6",
       sphere: "#ffffff",
-      wire: "#2a2a2a",
+      wire: "#0a0a0a",
       axis: "#c91873",
       arrow: "#000000",
       emissive: "#444444",
-      trace: "#000000",
+      trace: "#1a1a1a",
     },
   };
 
@@ -1232,11 +1232,13 @@ const { BlochSphereWidget, makeLatexLabel } = (() => {
       });
       this.blochGroup.add(new THREE.Mesh(sphereGeom, this.sphereMat));
 
-      this.sphereWireMat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.palette.wire), opacity: 0.55, transparent: true });
+      this.sphereWireMat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.palette.wire), opacity: 0.9, transparent: true });
       const sphereWire = new THREE.LineSegments(
         new THREE.EdgesGeometry(sphereGeom),
         this.sphereWireMat
       );
+      sphereWire.renderOrder = 3;
+      sphereWire.material.depthTest = false;
       this.blochGroup.add(sphereWire);
       const axisLine = (p1, p2) => {
         const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.palette.axis), transparent: true, opacity: 0.55 });
@@ -1274,24 +1276,36 @@ const { BlochSphereWidget, makeLatexLabel } = (() => {
         vec.clone().normalize(),
         new THREE.Vector3(0, 0, 0),
         0.9,
-        new THREE.Color(this.palette.arrow),
-        0.12,
-        0.06
+        new THREE.Color("#0a0a0a"),
+        0.16,
+        0.08
       );
       this.blochGroup.add(this.arrow);
+      this.arrow.renderOrder = 9;
+      if (this.arrow.line?.material) {
+        this.arrow.line.material.depthTest = false;
+        this.arrow.line.material.depthWrite = false;
+        this.arrow.line.material.linewidth = 3;
+      }
+      if (this.arrow.cone?.material) {
+        this.arrow.cone.material.depthTest = false;
+        this.arrow.cone.material.depthWrite = false;
+      }
 
       this.point = new THREE.Mesh(
         new THREE.SphereGeometry(0.05, 24, 24),
-        new THREE.MeshPhongMaterial({ color: new THREE.Color(this.palette.arrow), emissive: new THREE.Color(this.palette.emissive) })
+        new THREE.MeshPhongMaterial({ color: new THREE.Color("#0a0a0a"), emissive: new THREE.Color(this.palette.emissive) })
       );
       this.point.position.copy(vec);
       this.blochGroup.add(this.point);
 
-      this.tracePoints = [vec.clone()];
-      this.traceLine = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints(this.tracePoints),
-        new THREE.LineBasicMaterial({ color: new THREE.Color(this.palette.trace), transparent: true, depthTest: false })
+      this.tracePoints = [vec.clone(), vec.clone()];
+      this.traceLine = new THREE.Mesh(
+        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(this.tracePoints), 8, 0.006, 8, false),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color("#ff2a2a"), transparent: true, depthTest: false, depthWrite: false, toneMapped: false })
       );
+      this.traceLine.renderOrder = 8;
+      this.traceLine.frustumCulled = false;
       this.traceLine.renderOrder = 10;
       this.traceLine.visible = true;
       this.blochGroup.add(this.traceLine);
@@ -1333,7 +1347,11 @@ const { BlochSphereWidget, makeLatexLabel } = (() => {
         this.sphereWireMat.transparent = true;
         this.sphereWireMat.needsUpdate = true;
       }
-      if (this.traceLine) this.traceLine.visible = false;
+      if (this.traceLine?.material) {
+        const allow = !this.forceHideTrace && visible;
+        this.traceLine.visible = allow;
+        this.traceLine.material.opacity = allow ? 1 : 0;
+      }
     }
 
     setStateAndTrace(state, traceVecs, { hideArrow = false, hideTrace = false } = {}) {
@@ -1376,7 +1394,7 @@ const { BlochSphereWidget, makeLatexLabel } = (() => {
         const beforeV = new THREE.Vector3(before.x, before.y, before.z);
         applyGateToState(this.state, gateName);
         if (!this.state.rho) {
-          const axis = new THREE.Vector3(gate.axis.x, gate.axis.y, gate.axis.z).normalize();
+          const axis = getGateVisualAxis(gateName, new THREE.Vector3(gate.axis.x, gate.axis.y, gate.axis.z));
           this._addGateArc(beforeV, axis, gate.angle);
         }
         this._redrawFromState(false);
@@ -1397,7 +1415,7 @@ const { BlochSphereWidget, makeLatexLabel } = (() => {
           return;
         }
 
-        const axis = new THREE.Vector3(gate.axis.x, gate.axis.y, gate.axis.z).normalize();
+        const axis = getGateVisualAxis(gateName, new THREE.Vector3(gate.axis.x, gate.axis.y, gate.axis.z));
 
         this.isAnimating = true;
         this.animStart = performance.now();
@@ -1473,7 +1491,21 @@ const { BlochSphereWidget, makeLatexLabel } = (() => {
       if (!this.traceLine) return;
       this.traceLine.geometry.dispose();
       const points = this.tracePoints.map((pt) => this._projectToSphere(pt));
-      this.traceLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const filtered = [];
+      const minDist = 0.002;
+      for (const p of points) {
+        const last = filtered[filtered.length - 1];
+        if (!last || last.distanceTo(p) > minDist) filtered.push(p);
+      }
+      let safePoints = filtered;
+      if (safePoints.length < 2) {
+        const base = safePoints[0] ?? new THREE.Vector3(0, 0, 1);
+        const tweak = base.clone().add(new THREE.Vector3(0.002, 0.001, 0)).normalize();
+        safePoints = [base, tweak];
+      }
+      const curve = new THREE.CatmullRomCurve3(safePoints);
+      const tubularSegments = Math.max(8, safePoints.length * 6);
+      this.traceLine.geometry = new THREE.TubeGeometry(curve, tubularSegments, 0.006, 8, false);
     }
 
     _projectToSphere(vec) {
@@ -1560,7 +1592,7 @@ const { BlochSphereWidget, makeLatexLabel } = (() => {
         this.point.material.color.set(p.arrow);
         this.point.material.emissive.set(p.emissive);
       }
-      if (this.traceLine?.material) this.traceLine.material.color.set(p.trace);
+      if (this.traceLine?.material) this.traceLine.material.color.set("#ff2a2a");
       this.labelSprites.forEach((sprite) => sprite.material?.color?.set(p.label));
       if (this.sphereMat) {
         this.sphereMat.emissive = new THREE.Color(p.axis).multiplyScalar(0.08);
@@ -1578,17 +1610,16 @@ const { BlochSphereWidget, makeLatexLabel } = (() => {
       const opacity = Math.max(0.2, Math.min(1, len01)) * opacityScale;
       if (this.arrow.line && this.arrow.line.material) {
         this.arrow.line.material.transparent = true;
-        this.arrow.line.material.opacity = visible ? opacity : 0;
+        this.arrow.line.material.opacity = opacity;
       }
       if (this.arrow.cone && this.arrow.cone.material) {
         this.arrow.cone.material.transparent = true;
-        this.arrow.cone.material.opacity = visible ? opacity : 0;
+        this.arrow.cone.material.opacity = opacity;
       }
-      this.point.visible = visible;
-      if (visible) {
-        this.point.position.copy(rawVec.clone().multiplyScalar(scale));
-      } else {
-        this.point.position.set(0, 0, 0);
+      this.point.visible = true;
+      this.point.position.copy(rawVec.clone().multiplyScalar(scale));
+      if (this.traceLine) {
+        this.traceLine.renderOrder = 8;
       }
     }
 
@@ -4019,7 +4050,7 @@ function computeBlochTraces(stepIdx) {
           const afterRho = reducedRhoFromStateVector(stateVector, q, qubitCount);
           const afterV = blochFromRho(afterRho);
           stateList[q] = stateFromRho(afterRho);
-          const axis = new THREE.Vector3(GATES[g].axis.x, GATES[g].axis.y, GATES[g].axis.z).normalize();
+          const axis = getGateVisualAxis(g, new THREE.Vector3(GATES[g].axis.x, GATES[g].axis.y, GATES[g].axis.z));
           const steps = 36;
           for (let i = 1; i <= steps; i++) {
             const t = i / steps;
@@ -4253,6 +4284,11 @@ function rotateVectorAroundAxis(vec, axis, angle) {
   const term2 = new THREE.Vector3().crossVectors(k, v).multiplyScalar(sinA);
   const term3 = k.clone().multiplyScalar(k.dot(v) * (1 - cosA));
   return term1.add(term2).add(term3);
+}
+
+function getGateVisualAxis(gateName, axis) {
+  if (gateName === "X") return new THREE.Vector3(0, 1, 0);
+  return axis.clone().normalize();
 }
 
 function rebuildToStep(stepIdx) {
